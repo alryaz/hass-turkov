@@ -1,0 +1,12 @@
+{
+  "domain": "turkov",
+  "name": "Turkov",
+  "codeowners": ["@alryaz"],
+  "config_flow": true,
+  "documentation": "https://github.com/alryaz/hass-turkov",
+  "issue_tracker": "https://github.com/alryaz/hass-turkov/issues",
+  "iot_class": "cloud_polling",
+  "loggers": ["turkov"],
+  "version": "2023.5.1",
+  "requirements": []
+}

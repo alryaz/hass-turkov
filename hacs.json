@@ -1,0 +1,7 @@
+{
+  "name": "Turkov Ventilation Systems",
+  "content_in_root": false,
+  "zip_release": false,
+  "country": ["RU", "BY"],
+  "homeassistant": "2023.5.0"
+}
