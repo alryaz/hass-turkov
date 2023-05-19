@@ -15,7 +15,8 @@ from typing import (
     Tuple,
     Callable,
     Any,
-    final, SupportsInt,
+    final,
+    SupportsInt,
 )
 
 import aiohttp
@@ -563,14 +564,14 @@ class TurkovDevice:
         return changed_attributes
 
     async def set_values(self, **kwargs) -> None:
-        printed_values = ', '.join(f'{k}={v}' for k, v in kwargs.items())
+        printed_values = ", ".join(f"{k}={v}" for k, v in kwargs.items())
         _LOGGER.debug(f"[{self}] Willing to set values: {printed_values}")
 
         api = self._api
         async with (
             await api.prepare_authenticated_request(
                 METH_POST,
-                api.BASE_URL + f"/user/devices/{self._id}",
+                api.BASE_URL + f"/user/device/{self._id}",
                 json=kwargs,
             )
         ) as response:
@@ -586,9 +587,7 @@ class TurkovDevice:
             if message != "success":
                 raise TurkovAPIError(f"[{self}] Error calling setter: {message}")
 
-            _LOGGER.debug(
-                f"[{self}] Successfully set: {printed_values}"
-            )
+            _LOGGER.debug(f"[{self}] Successfully set: {printed_values}")
 
     async def set_value(self, key: str, value: Any) -> None:
         await self.set_values(**{key: value})
@@ -631,7 +630,9 @@ class TurkovDevice:
 
         await self.set_value("fan_speed", fan_speed)
 
-    async def set_target_temperature(self, target_temperature: Union[int, SupportsInt]) -> None:
+    async def set_target_temperature(
+        self, target_temperature: Union[int, SupportsInt]
+    ) -> None:
         target_temperature = int(target_temperature)
 
         if not (15 <= target_temperature <= 50):

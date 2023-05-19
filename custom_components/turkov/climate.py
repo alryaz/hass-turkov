@@ -82,13 +82,13 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
             device, CLIMATE_ATTR_CURRENT_TEMPERATURE
         )
 
-        if self._attr_hvac_modes is None:
+        if not hasattr(self, "_attr_hvac_modes"):
             self._attr_hvac_modes = (hvac_modes := [HVACMode.OFF, HVACMode.FAN_ONLY])
 
             if device.has_heater:
                 hvac_modes.insert(1, HVACMode.HEAT)
 
-        if self._attr_fan_modes is None:
+        if not hasattr(self, "_attr_fan_modes"):
             self._attr_fan_modes = (fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH])
 
             if device.fan_mode == "both":
@@ -151,14 +151,19 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
 
         # Device calls
         if hvac_mode == HVACMode.OFF:
-            await device.turn_off()
+            if not device.is_on:
+                await device.turn_off()
         else:
             if not device.is_on:
                 await device.turn_on()
             if hvac_mode == HVACMode.HEAT:
-                await device.turn_on_heater()
+                if not device.is_heater_on:
+                    await device.turn_on_heater()
+                # Send target temperature because turn off resets heater
+                await device.set_target_temperature(self._attr_target_temperature)
             elif hvac_mode == HVACMode.FAN_ONLY:
-                await device.turn_off_heater()
+                if device.is_heater_on:
+                    await device.turn_off_heater()
 
         # Refresh call
         await coordinator.async_request_refresh()
@@ -177,8 +182,10 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
             )
 
         # Device calls
-        await device.turn_on()
-        await device.turn_on_heater()
+        if not device.is_on:
+            await device.turn_on()
+        if not device.is_heater_on:
+            await device.turn_on_heater()
         await device.set_target_temperature(kwargs[ATTR_TEMPERATURE])
 
         # Refresh call

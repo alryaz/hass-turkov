@@ -112,7 +112,7 @@ class TurkovDeviceUpdateCoordinator(DataUpdateCoordinator[Set[str]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=30),
+            update_interval=timedelta(seconds=10),
         )
 
     async def _async_update_data(self) -> Set[str]:
