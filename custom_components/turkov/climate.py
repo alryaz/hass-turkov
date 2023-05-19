@@ -70,6 +70,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._attr_unique_id = "climate__" + self._attr_unique_id
+        self._has_real_fan_off = False
 
     @callback
     def _update_attr(self) -> None:
@@ -89,52 +90,49 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
                 hvac_modes.insert(1, HVACMode.HEAT)
 
         if not hasattr(self, "_attr_fan_modes"):
-            self._attr_fan_modes = (fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH])
+            self._attr_fan_modes = (
+                fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
+            )
 
             if device.fan_mode == "both":
                 fan_modes.insert(0, FAN_AUTO)
+
+                # @TODO: check if this is true
+                self._has_real_fan_off = True
+            elif device.fan_mode == "manual":
+                self._has_real_fan_off = False
 
         self._attr_hvac_mode = (
             (HVACMode.HEAT if device.is_heater_on else HVACMode.FAN_ONLY)
             if device.is_on
             else HVACMode.OFF
         )
-        self._attr_fan_mode = self.FAN_MODE_TO_DEVICE_MAPPING.get(
-            device.fan_speed, FAN_AUTO
+        self._attr_fan_mode = (
+            self.FAN_MODE_TO_DEVICE_MAPPING.get(device.fan_speed, FAN_AUTO)
+            if not self._has_real_fan_off and device.is_on
+            else FAN_OFF
         )
-
-    async def async_turn_on(self) -> None:
-        coordinator = self.coordinator
-
-        # Device call
-        await coordinator.turkov_device.turn_on()
-
-        # Refresh call
-        await coordinator.async_request_refresh()
-
-    async def async_turn_off(self) -> None:
-        coordinator = self.coordinator
-
-        # Device call
-        await coordinator.turkov_device.turn_off()
-
-        # Refresh call
-        await coordinator.async_request_refresh()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         coordinator = self.coordinator
         device = coordinator.turkov_device
 
-        try:
-            fan_speed_value = list(self.FAN_MODE_TO_DEVICE_MAPPING.keys())[
-                list(self.FAN_MODE_TO_DEVICE_MAPPING.values()).index(fan_mode)
-            ]
-        except ValueError:
-            raise HomeAssistantError(f"Fan mode {fan_mode} not found in mapping")
+        if not self._has_real_fan_off and fan_mode == FAN_OFF:
+            if device.is_on:
+                await device.turn_off()
 
-        # Device calls
-        await device.turn_on()
-        await device.set_fan_speed(fan_speed_value)
+        else:
+            try:
+                fan_speed_value = list(self.FAN_MODE_TO_DEVICE_MAPPING.keys())[
+                    list(self.FAN_MODE_TO_DEVICE_MAPPING.values()).index(fan_mode)
+                ]
+            except ValueError:
+                raise HomeAssistantError(f"Fan mode {fan_mode} not found in mapping")
+
+            # Device calls
+            if not device.is_on:
+                await device.turn_on()
+            await device.set_fan_speed(fan_speed_value)
 
         # Refresh call
         await coordinator.async_request_refresh()
@@ -151,7 +149,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
 
         # Device calls
         if hvac_mode == HVACMode.OFF:
-            if not device.is_on:
+            if device.is_on:
                 await device.turn_off()
         else:
             if not device.is_on:
