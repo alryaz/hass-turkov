@@ -15,11 +15,12 @@ from typing import (
     Tuple,
     Callable,
     Any,
+    final, SupportsInt,
 )
 
 import aiohttp
 from aiohttp import ContentTypeError
-from aiohttp.hdrs import METH_GET, IF_NONE_MATCH
+from aiohttp.hdrs import METH_GET, IF_NONE_MATCH, METH_POST
 from aiohttp.typedefs import LooseHeaders
 from homeassistant.util.dt import utcnow, utc_to_timestamp
 from multidict import CIMultiDict
@@ -65,6 +66,10 @@ class TurkovAPIAuthenticationError(TurkovAPIError):
     """Authentication-related exceptions"""
 
 
+class TurkovAPIValueError(TurkovAPIError, ValueError):
+    """Data-related errors"""
+
+
 def _log_hide_id(id_: str):
     return "*" + str(id_)[-4:]
 
@@ -73,7 +78,7 @@ class TurkovAPI:
     BASE_URL: ClassVar[str] = "https://turkovwifi.ru"
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}[{'**'.join(v[0] for v in self._user_email.partition('@'))+'**'}]"
+        return f"{self.__class__.__name__}[{'**'.join(v[0] for v in self._user_email.partition('@')) + '**'}]"
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}[user_email={self._user_email}, devices={self._devices}]>"
@@ -392,8 +397,8 @@ class TurkovDevice:
         "fan_speed": ("fan_speed", str),
         "fan_mode": ("fan_mode", None),
         "target_temperature": ("temp_sp", float),
-        # "current_action": "mode",
-        # "selected_mode": "setup",
+        "selected_mode": ("mode", str),
+        "configuration": ("setup", str),
         "filter_life_percentage": ("filter", float),
         "outdoor_temperature": ("out_temp", lambda x: float(x) / 10),
         "indoor_temperature": ("in_temp", lambda x: float(x) / 10),
@@ -446,15 +451,18 @@ class TurkovDevice:
         self.fan_mode: Optional[str] = None
         self.target_temperature: Optional[float] = None
         # self.current_mode: Optional[str] = None
-        # self.chosen_mode: Optional[str] = None
+        self.selected_mode: Optional[str] = None
         self.filter_life_percentage: Optional[float] = None
         self.outdoor_temperature: Optional[float] = None
         self.indoor_temperature: Optional[float] = None
+        self.configuration: Optional[str] = None
 
+    @final
     @property
     def api(self) -> TurkovAPI:
         return self._api
 
+    @final
     @property
     def id(self) -> str:
         return self._id
@@ -553,3 +561,80 @@ class TurkovDevice:
                     break
 
         return changed_attributes
+
+    async def set_values(self, **kwargs) -> None:
+        printed_values = ', '.join(f'{k}={v}' for k, v in kwargs.items())
+        _LOGGER.debug(f"[{self}] Willing to set values: {printed_values}")
+
+        api = self._api
+        async with (
+            await api.prepare_authenticated_request(
+                METH_POST,
+                api.BASE_URL + f"/user/devices/{self._id}",
+                json=kwargs,
+            )
+        ) as response:
+            try:
+                message = (await response.json())["message"]
+            except (ContentTypeError, JSONDecodeError) as exc:
+                raise TurkovAPIError(
+                    f"[{self}] Error decoding json data: {await response.text()}"
+                ) from exc
+            except (KeyError, ValueError, IndexError, TypeError, AttributeError) as exc:
+                raise TurkovAPIError(f"[{self}] Response contains no message") from exc
+
+            if message != "success":
+                raise TurkovAPIError(f"[{self}] Error calling setter: {message}")
+
+            _LOGGER.debug(
+                f"[{self}] Successfully set: {printed_values}"
+            )
+
+    async def set_value(self, key: str, value: Any) -> None:
+        await self.set_values(**{key: value})
+
+    async def toggle_heater(self, turn_on: Optional[bool] = None) -> None:
+        if turn_on is None:
+            turn_on = self.selected_mode == "none"
+
+        await (self.turn_on_heater if turn_on else self.turn_off_heater)()
+
+    @property
+    def has_heater(self) -> bool:
+        return self.configuration == "heating"
+
+    @property
+    def is_heater_on(self) -> bool:
+        return self.selected_mode == "heating"
+
+    async def turn_on_heater(self) -> None:
+        await self.set_value("mode", "1")
+
+    async def turn_off_heater(self) -> None:
+        await self.set_value("mode", "0")
+
+    async def toggle(self, turn_on: Optional[bool] = None) -> None:
+        if turn_on is None:
+            turn_on = self.is_on
+
+        await (self.turn_on if turn_on else self.turn_off)()
+
+    async def turn_on(self) -> None:
+        await self.set_value("on", "true")
+
+    async def turn_off(self) -> None:
+        await self.set_value("on", "false")
+
+    async def set_fan_speed(self, fan_speed: str) -> None:
+        if fan_speed not in ("A", "0", "1", "2", "3"):
+            raise TurkovAPIValueError("valid fan speed not specified")
+
+        await self.set_value("fan_speed", fan_speed)
+
+    async def set_target_temperature(self, target_temperature: Union[int, SupportsInt]) -> None:
+        target_temperature = int(target_temperature)
+
+        if not (15 <= target_temperature <= 50):
+            raise TurkovAPIValueError("target temperature out of bounds")
+
+        await self.set_value("temp_sp", target_temperature)
