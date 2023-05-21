@@ -80,18 +80,15 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     def _update_attr_supported_features(self) -> None:
         """Calculate and update available features."""
         device = self.coordinator.turkov_device
-        supported_features = ClimateEntityFeature(0)
 
         if getattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE, None) is not None:
-            supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
+            self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
 
         if getattr(device, CLIMATE_ATTR_TARGET_HUMIDITY, None) is not None:
-            supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
+            self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
 
         if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
-            supported_features |= ClimateEntityFeature.FAN_MODE
-
-        self._attr_supported_features = supported_features
+            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
 
     @callback
     def _update_attr_temperature(self) -> None:
