@@ -10,47 +10,19 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    PERCENTAGE,
-    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-    EntityCategory,
-    UnitOfLength,
-    UnitOfTemperature,
-)
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TurkovDeviceUpdateCoordinator
-from .const import DOMAIN, CLIMATE_ATTRS
+from .const import DOMAIN
 from .entity import TurkovEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
-    # SensorEntityDescription(
-    #     key="fan_speed",
-    #     state_class=SensorStateClass.MEASUREMENT,
-    #     icon="mdi:fan",
-    # ),
-    # SensorEntityDescription(
-    #     key="fan_mode",
-    #     state_class=SensorStateClass.MEASUREMENT,
-    #     icon="mdi:fan",
-    # ),
-    SensorEntityDescription(
-        key="target_temperature",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
     SensorEntityDescription(
         key="outdoor_temperature",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    SensorEntityDescription(
-        key="indoor_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
@@ -81,9 +53,6 @@ async def async_setup_entry(
         add_keys = set(
             turkov_device_coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING.keys()
         )
-
-        if add_keys.issuperset(CLIMATE_ATTRS):
-            add_keys.difference_update(CLIMATE_ATTRS)
 
         for description in SENSOR_TYPES:
             if description.key in add_keys:

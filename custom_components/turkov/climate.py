@@ -18,14 +18,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TurkovDeviceUpdateCoordinator
-from .const import (
-    DOMAIN,
-    CLIMATE_ATTRS,
-    CLIMATE_ATTR_CURRENT_TEMPERATURE,
-    CLIMATE_ATTR_TARGET_TEMPERATURE,
-    CLIMATE_ATTR_FAN_MODE,
-    CLIMATE_ATTR_TARGET_HUMIDITY,
-)
+from .const import DOMAIN
 from .entity import TurkovEntity
 
 
@@ -47,9 +40,6 @@ async def async_setup_entry(
                 turkov_device_identifier,
                 turkov_device_coordinator,
             ) in turkov_update_coordinators.items()
-            if CLIMATE_ATTRS.issubset(
-                turkov_device_coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING
-            )
         ],
         False,
     )
@@ -81,24 +71,35 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         """Calculate and update available features."""
         device = self.coordinator.turkov_device
 
-        if getattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE, None) is not None:
+        if device.target_temperature is not None:
             self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
 
-        if getattr(device, CLIMATE_ATTR_TARGET_HUMIDITY, None) is not None:
+        if device.target_humidity is not None:
             self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
 
-        if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
+        if device.fan_mode is not None:
             self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
 
     @callback
     def _update_attr_temperature(self) -> None:
         device = self.coordinator.turkov_device
 
-        self._attr_target_temperature = getattr(
-            device, CLIMATE_ATTR_TARGET_TEMPERATURE, None
+        self._attr_target_temperature = device.target_temperature
+        self._attr_current_temperature = (
+            device.indoor_temperature
+            if device.current_temperature is None
+            else device.current_temperature
         )
-        self._attr_current_temperature = getattr(
-            device, CLIMATE_ATTR_CURRENT_TEMPERATURE, None
+
+    @callback
+    def _update_attr_humidity(self) -> None:
+        device = self.coordinator.turkov_device
+
+        self._attr_target_humidity = device.target_humidity
+        self._attr_current_humidity = (
+            device.indoor_humidity
+            if device.current_humidity is None
+            else device.current_humidity
         )
 
     @callback
@@ -110,11 +111,10 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         if device.has_heater:
             hvac_modes.append(HVACMode.HEAT)
 
-        if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
+        if device.fan_mode is not None:
             hvac_modes.append(HVACMode.FAN_ONLY)
 
         self._attr_hvac_modes = hvac_modes
-
         self._attr_hvac_mode = (
             (
                 HVACMode.HEAT
@@ -162,6 +162,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         self._update_attr_picture()
         self._update_attr_supported_features()
         self._update_attr_temperature()
+        self._update_attr_humidity()
         self._update_attr_hvac()
         self._update_attr_fan()
 
@@ -187,7 +188,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
             await device.set_fan_speed(fan_speed_value)
 
         # Refresh call
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the HVAC mode."""
@@ -216,7 +217,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
                     await device.turn_off_heater()
 
         # Refresh call
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set the target temperature."""
@@ -234,4 +235,16 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         await device.set_target_temperature(kwargs[ATTR_TEMPERATURE])
 
         # Refresh call
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
+
+    async def async_set_humidity(self, humidity: int) -> None:
+        """Set the target humidity"""
+        coordinator = self.coordinator
+        device = coordinator.turkov_device
+
+        if not device.is_on:
+            await device.turn_on()
+        await device.set_target_humidity(humidity)
+
+        # Refresh call
+        await coordinator.async_refresh()
