@@ -15,25 +15,28 @@ class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
     def __init__(
         self,
         turkov_device_coordinator: TurkovDeviceUpdateCoordinator,
+        turkov_device_identifier: str,
         description: Optional[EntityDescription] = None,
     ) -> None:
         """Initialize the entity."""
         super().__init__(turkov_device_coordinator)
 
-        self._device_id = turkov_device_coordinator.turkov_device.id
+        self._turkov_device_identifier = turkov_device_identifier
 
         if description is not None:
             self.entity_description = description
-            self._attr_unique_id = f"{self._device_id}_{description.key}"
+            self._attr_unique_id = f"{turkov_device_identifier}_{description.key}"
         else:
-            self._attr_unique_id = self._device_id
+            self._attr_unique_id = turkov_device_identifier
 
         self._update_attr()
 
     @property
     def device_name(self) -> str:
         turkov_device = self.coordinator.turkov_device
-        return turkov_device.device_name or turkov_device.device_type or self._device_id
+        return (
+            turkov_device.name or turkov_device.type or self._turkov_device_identifier
+        )
 
     @callback
     def _update_attr(self) -> None:
@@ -59,9 +62,9 @@ class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
         device = self.coordinator.turkov_device
         return DeviceInfo(
             configuration_url=device.api.BASE_URL,
-            identifiers={(DOMAIN, self._device_id)},
+            identifiers={(DOMAIN, self._turkov_device_identifier)},
             manufacturer="Turkov",
-            model=device.device_type,
+            model=device.type,
             name=self.device_name,
             sw_version=device.firmware_version,
         )

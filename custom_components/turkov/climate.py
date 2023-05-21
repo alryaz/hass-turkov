@@ -1,5 +1,5 @@
 """Support for Turkov climate."""
-from typing import Any, Dict, ClassVar
+from typing import Any, Dict, ClassVar, Optional
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -23,6 +23,8 @@ from .const import (
     CLIMATE_ATTRS,
     CLIMATE_ATTR_CURRENT_TEMPERATURE,
     CLIMATE_ATTR_TARGET_TEMPERATURE,
+    CLIMATE_ATTR_FAN_MODE,
+    CLIMATE_ATTR_TARGET_HUMIDITY,
 )
 from .entity import TurkovEntity
 
@@ -37,13 +39,16 @@ async def async_setup_entry(
 
     async_add_entities(
         [
-            TurkovClimateEntity(turkov_update_coordinator)
+            TurkovClimateEntity(
+                turkov_device_coordinator=turkov_device_coordinator,
+                turkov_device_identifier=turkov_device_identifier,
+            )
             for (
-                turkov_device_id,
-                turkov_update_coordinator,
+                turkov_device_identifier,
+                turkov_device_coordinator,
             ) in turkov_update_coordinators.items()
             if CLIMATE_ATTRS.issubset(
-                turkov_update_coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING
+                turkov_device_coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING
             )
         ],
         False,
@@ -61,11 +66,10 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         "3": FAN_HIGH,
     }
 
-    _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE
-    )
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1.0
+    _attr_min_temp = 5
+    _attr_max_temp = 40
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -83,13 +87,38 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
             device, CLIMATE_ATTR_CURRENT_TEMPERATURE
         )
 
+        # Calculate supported features (everywhere)
+        supported_features: Optional[ClimateEntityFeature] = getattr(
+            self, "_attr_supported_features", None
+        )
+        if supported_features is None:
+            supported_features = ClimateEntityFeature(0)
+
+            if getattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE, None) is not None:
+                supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
+
+            if getattr(device, CLIMATE_ATTR_TARGET_HUMIDITY, None) is not None:
+                supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
+
+            if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
+                supported_features |= ClimateEntityFeature.FAN_MODE
+
+            self._attr_supported_features = supported_features
+
+        # Calculate HVAC modes (supported everywhere)
         if not hasattr(self, "_attr_hvac_modes"):
-            self._attr_hvac_modes = (hvac_modes := [HVACMode.OFF, HVACMode.FAN_ONLY])
+            self._attr_hvac_modes = (hvac_modes := [HVACMode.OFF])
 
             if device.has_heater:
-                hvac_modes.insert(1, HVACMode.HEAT)
+                hvac_modes.append(HVACMode.HEAT)
 
-        if not hasattr(self, "_attr_fan_modes"):
+            if supported_features & ClimateEntityFeature.FAN_MODE:
+                hvac_modes.append(HVACMode.FAN_ONLY)
+
+        # Calculate fan modes (supported if fan mode enabled)
+        if supported_features & ClimateEntityFeature.FAN_MODE and not hasattr(
+            self, "_attr_fan_modes"
+        ):
             self._attr_fan_modes = (
                 fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
             )
@@ -102,16 +131,26 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
             elif device.fan_mode == "manual":
                 self._has_real_fan_off = False
 
+        # Set HVAC mode
         self._attr_hvac_mode = (
-            (HVACMode.HEAT if device.is_heater_on else HVACMode.FAN_ONLY)
+            (
+                HVACMode.HEAT
+                if device.is_heater_on
+                else HVACMode.FAN_ONLY
+                if supported_features & ClimateEntityFeature.FAN_MODE
+                else HVACMode.OFF
+            )
             if device.is_on
             else HVACMode.OFF
         )
-        self._attr_fan_mode = (
-            self.FAN_MODE_TO_DEVICE_MAPPING.get(device.fan_speed, FAN_AUTO)
-            if not self._has_real_fan_off and device.is_on
-            else FAN_OFF
-        )
+
+        # Set fan mode
+        if supported_features & ClimateEntityFeature.FAN_MODE:
+            self._attr_fan_mode = (
+                self.FAN_MODE_TO_DEVICE_MAPPING.get(device.fan_speed, FAN_AUTO)
+                if not self._has_real_fan_off and device.is_on
+                else FAN_OFF
+            )
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         coordinator = self.coordinator

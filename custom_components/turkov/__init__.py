@@ -2,8 +2,9 @@
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Set
+from typing import Set, Iterable, Dict
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_EMAIL,
@@ -11,8 +12,10 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
     CONF_ACCESS_TOKEN,
     Platform,
+    CONF_HOST,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import update_coordinator
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -31,10 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = (Platform.SENSOR, Platform.CLIMATE)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Turkov from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-
+async def async_setup_email_entry(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> Dict[str, "TurkovDeviceUpdateCoordinator"]:
     turkov_api_connection = TurkovAPI(
         async_get_clientsession(hass, entry.data[CONF_VERIFY_SSL]),
         entry.data[CONF_EMAIL],
@@ -58,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         },
     )
 
-    turkov_device_coordinators = {
+    return {
         turkov_device_id: TurkovDeviceUpdateCoordinator(
             hass,
             turkov_device=turkov_device,
@@ -66,13 +68,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for turkov_device_id, turkov_device in turkov_api_connection.devices.items()
     }
 
+
+async def async_setup_host_entry(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> Dict[str, "TurkovDeviceUpdateCoordinator"]:
+    turkov_device = TurkovDevice(
+        session=async_get_clientsession(hass),
+        host=entry.data[CONF_HOST],
+    )
+
+    await turkov_device.update_state()
+
+    return {
+        entry.data[CONF_HOST]: TurkovDeviceUpdateCoordinator(
+            hass,
+            turkov_device=turkov_device,
+        )
+    }
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Turkov from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+
+    try:
+        turkov_device_coordinators = await (
+            async_setup_email_entry(hass, entry)
+            if CONF_EMAIL in entry.data
+            else async_setup_host_entry(hass, entry)
+        )
+    except (TurkovAPIError, aiohttp.ClientError, TimeoutError) as exc:
+        raise ConfigEntryNotReady from exc
+
     hass.data[DOMAIN][entry.entry_id] = turkov_device_coordinators
 
     initial_update_tasks = {
-        turkov_device_id: hass.loop.create_task(
+        identifier: hass.loop.create_task(
             turkov_device_coordinator.async_config_entry_first_refresh()
         )
-        for turkov_device_id, turkov_device_coordinator in turkov_device_coordinators.items()
+        for identifier, turkov_device_coordinator in turkov_device_coordinators.items()
     }
     await asyncio.wait(initial_update_tasks.values(), return_when=asyncio.ALL_COMPLETED)
 

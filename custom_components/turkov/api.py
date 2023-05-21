@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from functools import wraps
 from json import JSONDecodeError, loads
 from types import MappingProxyType
 from typing import (
@@ -15,7 +16,6 @@ from typing import (
     Tuple,
     Callable,
     Any,
-    final,
     SupportsInt,
 )
 
@@ -76,6 +76,33 @@ def _log_hide_id(id_: str):
 
 
 class TurkovAPI:
+    @staticmethod
+    def _handle_preliminary_auth(fn):
+        @wraps(fn)
+        async def decorator(self: "TurkovAPI", *args, **kwargs):
+            authentication_attempted = False
+            handle_authentication = self.handle_authentication
+
+            # Handle authentication (if enabled)
+            if handle_authentication and self.access_token_needs_update:
+                _LOGGER.debug(f"[{self}] Access token requires update before request")
+                await self.authenticate()
+                authentication_attempted = True
+
+            # Perform execution
+            try:
+                return await fn(self, *args, **kwargs)
+            except TurkovAPIAuthenticationError:
+                if authentication_attempted or not handle_authentication:
+                    raise
+                _LOGGER.debug(
+                    f"[{self}] Performing authentication because previous request failed due to authentication errors"
+                )
+                await self.authenticate()
+                return await fn(self, *args, **kwargs)
+
+        return decorator
+
     BASE_URL: ClassVar[str] = "https://turkovwifi.ru"
 
     def __str__(self) -> str:
@@ -261,17 +288,6 @@ class TurkovAPI:
     async def update_access_token(self, refresh_token: Optional[str] = None) -> None:
         raise NotImplementedError
 
-    async def _handle_pre_auth(self):
-        if self._session.closed:
-            raise RuntimeError("Session is closed and must be renewed")
-        if self.access_token_needs_update:
-            if not self.handle_authentication:
-                raise TurkovAPIAuthenticationError("Access token not yet retrieved")
-            _LOGGER.debug(f"[{self}] Access token requires update before auth")
-            await self.authenticate()
-        else:
-            _LOGGER.debug(f"[{self}] Authenticated request with valid token")
-
     async def prepare_authenticated_request(
         self,
         *args,
@@ -279,8 +295,6 @@ class TurkovAPI:
         request_tag: Optional[str] = None,
         **kwargs,
     ):
-        await self._handle_pre_auth()
-
         if headers is None:
             headers = {}
         elif not isinstance(headers, MutableMapping):
@@ -298,6 +312,7 @@ class TurkovAPI:
 
         return self._session.request(*args, headers=headers, **kwargs)
 
+    @_handle_preliminary_auth
     async def update_user_data(self, force: bool = False) -> None:
         _LOGGER.debug(f"[{self}] Updating user information and list of devices")
         async with (
@@ -358,13 +373,13 @@ class TurkovAPI:
                     _LOGGER.info(
                         f"[{self}] Creating new device with ID: {_log_hide_id(id_)}"
                     )
-                    device = TurkovDevice(self, id_)
+                    device = TurkovDevice(id_, self)
                     existing_devices[id_] = device
                 else:
                     leftover_devices.discard(id_)
 
-                device.device_type = device_data["deviceType"]
-                device.device_name = device_data["deviceName"]
+                device.type = device_data["deviceType"]
+                device.name = device_data["deviceName"]
                 device.serial_number = device_data["serialNumber"]
                 device.pin = device_data["pin"]
                 device.firmware_version = device_data["firmVer"]
@@ -379,6 +394,79 @@ class TurkovAPI:
             # # @TODO
             # self._request_history["user_data"] = ...
 
+    @_handle_preliminary_auth
+    async def get_device_state(self, device_id: str) -> Dict[str, Any]:
+        _LOGGER.debug(f"[{self}] Fetching state for device {device_id}")
+
+        async with (
+            await self.prepare_authenticated_request(
+                METH_GET,
+                self.BASE_URL + "/user/devices",
+                params={"device": f"{device_id}_state"},
+            )
+        ) as response:
+            try:
+                device_data_list = await response.json()
+            except (ContentTypeError, JSONDecodeError):
+                raise TurkovAPIError(
+                    f"[{self}] Error decoding json data: {await response.text()}"
+                )
+
+        # Process device data
+        try:
+            if not isinstance(device_data_list, List):
+                raise TurkovAPIError("Improper device data format")
+
+            try:
+                device_data_text = device_data_list[-1]
+            except IndexError as exc:
+                raise TurkovAPIError("Missing device data") from exc
+
+            try:
+                device_data = loads(device_data_text)
+            except JSONDecodeError as exc:
+                raise TurkovAPIError("Improper device data encoding") from exc
+
+            if not isinstance(device_data, dict):
+                raise TurkovAPIError("Improper device data format")
+        except:
+            _LOGGER.error(
+                f"[{self}] Failed to fetch state for device {device_id}: {device_data_list}"
+            )
+            raise
+
+        _LOGGER.debug(
+            f"[{self}] Fetching state for device {device_id} successful: {device_data}"
+        )
+        return device_data
+
+    @_handle_preliminary_auth
+    async def set_device_value(self, device_id: str, key: str, value: Any) -> None:
+        _LOGGER.debug(f"[{self}] Sending `{key}`=`{value}` to device {device_id}")
+
+        async with (
+            await self.prepare_authenticated_request(
+                METH_POST,
+                f"{self.BASE_URL}/user/device/{device_id}",
+                json={key: value},
+            )
+        ) as response:
+            try:
+                message = (await response.json())["message"]
+            except (ContentTypeError, JSONDecodeError) as exc:
+                raise TurkovAPIError(
+                    f"[{self}] Error decoding json data: {await response.text()}"
+                ) from exc
+            except (KeyError, ValueError, IndexError, TypeError, AttributeError) as exc:
+                raise TurkovAPIError(f"[{self}] Response contains no message") from exc
+
+        if message != "success":
+            raise TurkovAPIError(f"[{self}] Error calling setter: {message}")
+
+        _LOGGER.debug(
+            f"[{self}] Setting `{key}`=`{value}` to device {device_id} successful"
+        )
+
 
 class TurkovDevice:
     @staticmethod
@@ -391,6 +479,10 @@ class TurkovDevice:
         "i-Vent": "/images/ivent.jpg",
     }
 
+    @staticmethod
+    def _float_less(x):
+        return float(x) / 10
+
     ATTRIBUTE_KEY_MAPPING: ClassVar[
         Mapping[str, Tuple[str, Optional[Callable[[Any], Any]]]]
     ] = {
@@ -399,17 +491,25 @@ class TurkovDevice:
         "fan_mode": ("fan_mode", None),
         "target_temperature": ("temp_sp", float),
         "selected_mode": ("mode", str),
-        "configuration": ("setup", str),
+        "setup": ("setup", str),
         "filter_life_percentage": ("filter", float),
-        "outdoor_temperature": ("out_temp", lambda x: float(x) / 10),
-        "indoor_temperature": ("in_temp", lambda x: float(x) / 10),
+        "outdoor_temperature": ("out_temp", _float_less),
+        "indoor_temperature": ("in_temp", _float_less),
         "image_url": ("image", False),
+        "indoor_humidity": ("in_humid", _float_less),
+        "air_pressure": ("air_press", float),
+        "co2_level": ("CO2_level", float),
+        "current_temperature": ("temp_curr", _float_less),
+        "current_humidity": ("hum_curr", _float_less),
+        "target_humidity": ("hum_sp", int),
     }
 
     def __str__(self) -> str:
+        """Convert object to string."""
         return f"{self.__class__.__name__}[{_log_hide_id(self._id)}]"
 
     def __repr__(self) -> str:
+        """Represent object attributes with a string value."""
         return (
             f"<{self.__class__.__name__}"
             f"[id={self._id}, "
@@ -419,34 +519,53 @@ class TurkovDevice:
     # noinspection PyShadowingBuiltins
     def __init__(
         self,
-        api: TurkovAPI,
-        id: str,
+        id: Optional[str] = None,
+        api: Optional[TurkovAPI] = None,
+        session: Optional[aiohttp.ClientSession] = None,
+        host: Optional[str] = None,
+        port: int = 80,
         *,
         serial_number: Optional[str] = None,
         pin: Optional[str] = None,
-        device_type: Optional[str] = None,
-        device_name: Optional[str] = None,
+        type: Optional[str] = None,
+        name: Optional[str] = None,
         firmware_version: Optional[str] = None,
         image_url: Optional[str] = None,
     ) -> None:
-        if not api:
-            raise ValueError("api cannot be empty")
-        if not id:
-            raise ValueError("id cannot be empty")
+        """
+        Initialise Turkov device object.
+
+        :param id:
+        :param api:
+        :param serial_number:
+        :param pin:
+        :param type:
+        :param name:
+        :param firmware_version:
+        :param image_url:
+        """
+        if api and not id:
+            raise ValueError("id cannot be empty with api")
+        if not (api or session):
+            raise ValueError("object must be provided with at least api or session")
 
         # Required attributes
         self._api = api
         self._id = id
+        self._session = session
+        self.host = host
+        self._port = port
 
         # Optional attributes
         self.serial_number = serial_number
         self.pin = pin
-        self.device_type = device_type
-        self.device_name = device_name
+        self.type = type
+        self.name = name
         self.firmware_version = firmware_version
         self.image_url = image_url
 
         # Placeholders
+        self.error: Optional[str] = None
         self.is_on: Optional[bool] = None
         self.fan_speed: Optional[str] = None
         self.fan_mode: Optional[str] = None
@@ -456,141 +575,173 @@ class TurkovDevice:
         self.filter_life_percentage: Optional[float] = None
         self.outdoor_temperature: Optional[float] = None
         self.indoor_temperature: Optional[float] = None
-        self.configuration: Optional[str] = None
+        self.setup: Optional[str] = None
+        self.air_pressure: Optional[float] = None
+        self.indoor_humidity: Optional[float] = None
+        self.co2_level: Optional[float] = None
+        self.current_temperature: Optional[float] = None
+        self.current_humidity: Optional[float] = None
+        self.target_humidity: Optional[float] = None
 
-    @final
     @property
-    def api(self) -> TurkovAPI:
-        return self._api
-
-    @final
-    @property
-    def id(self) -> str:
+    def id(self) -> Optional[str]:
         return self._id
 
-    async def update_state(self, mark_as_none_if_not_present: bool = False) -> Set[str]:
-        api = self._api
-        async with (
-            await api.prepare_authenticated_request(
-                METH_GET,
-                api.BASE_URL + "/user/devices",
-                params={"device": f"{self._id}_state"},
-            )
-        ) as response:
+    @property
+    def api(self) -> Optional[TurkovAPI]:
+        return self._api
+
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """Return usable session object"""
+        if self._session:
+            return self._session
+        if self._api:
+            return self._api.session
+        raise RuntimeError("session object missing from device object")
+
+    @property
+    def base_url(self) -> str:
+        if (host := self.host) is None:
+            raise RuntimeError("host not set")
+        return f"http://{host}:{self.port}"
+
+    @property
+    def port(self) -> int:
+        """Return preset port"""
+        return self._port
+
+    @port.setter
+    def port(self, value: int) -> None:
+        """Validate and set new port value"""
+        if not (0 < value < 65536):
+            raise ValueError("port must be within [1:65535] range")
+        self._port = value
+
+    async def get_state_local(self) -> Dict[str, Any]:
+        if not self.host:
+            raise RuntimeError("host not set")
+
+        async with self.session.get(self.base_url + "/state") as response:
+            return await response.json()
+
+    async def get_state(self) -> Dict[str, Any]:
+        """
+        Get device state attributes.
+        :return: Dictionary of attributes to be mapped onto device.
+        """
+        if self.host:
             try:
-                device_data_list = await response.json()
-            except (ContentTypeError, JSONDecodeError):
-                raise TurkovAPIError(
-                    f"[{self}] Error decoding json data: {await response.text()}"
+                await self.get_state_local()
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                JSONDecodeError,
+                ContentTypeError,
+            ):
+                if not self._api:
+                    raise
+                _LOGGER.warning(
+                    f"[{self}] Local fetching failed, attempting to fetch state from cloud"
                 )
 
-        _LOGGER.debug(f"[{self}] Device update data: {device_data_list}")
+        if self._api:
+            return await self._api.get_device_state(self._id)
+
+        raise TurkovAPIError("No method to fetch device state")
+
+    async def set_value(self, key: str, value: Any) -> None:
+        """
+        Set device attribute.
+
+        :param key:
+        :param value:
+        :return:
+        """
+        if self.host:
+            try:
+                async with self.session.post(
+                    self.base_url + "/command", json={key: value}
+                ) as response:
+                    return await response.json()
+            except asyncio.CancelledError:
+                raise
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                JSONDecodeError,
+                ContentTypeError,
+            ):
+                if not self._api:
+                    raise
+                _LOGGER.warning(
+                    f"[{self}] Local command failed, attempting to issue command via cloud"
+                )
+
+        if self._api:
+            return await self._api.set_device_value(self._id, key, value)
+
+        raise TurkovAPIError("No method to set device values")
+
+    async def update_state(self, mark_as_none_if_not_present: bool = False) -> Set[str]:
+        """
+        Update state of target device.
+
+        :param mark_as_none_if_not_present: Mark expected attributes as None if not present in response.
+        :return: Set of changed attributes (including set to None if `mark_as_none_if_present` is set to True)
+        """
+
+        device_data = await self.get_state()
 
         changed_attributes = set()
 
+        def set_attribute(attr_: str, value_: Any):
+            _LOGGER.debug(f"[{self}] Setting '{attr_}' = '{value_}'")
+            setattr(self, attr_, value_)
+            changed_attributes.add(attr_)
+
+        # Generic attribute handling process
+        for attribute_name, (
+            key,
+            converter,
+        ) in self.ATTRIBUTE_KEY_MAPPING.items():
+            if converter is False:
+                continue
+
+            try:
+                value = device_data[key]
+            except KeyError:
+                if not mark_as_none_if_not_present:
+                    continue
+                value = None
+            else:
+                if callable(converter):
+                    value = converter(value)
+
+            if value != getattr(self, attribute_name):
+                set_attribute(attribute_name, value)
+
+        # Custom attribute handling process
+        image_url = device_data.get("image") or None
+        if image_url:
+            # Custom image detected
+            image_url = f"{self._api.BASE_URL}/upload/{self._id}_{image_url}.jpg"
+        elif self.type in self.IMAGES_BY_DEVICE_TYPE:
+            # Select image based on device type
+            image_url = self.IMAGES_BY_DEVICE_TYPE[self.type]
+            if image_url.startswith("/"):
+                image_url = self._api.BASE_URL + image_url
+
+        if (
+            (image_url is None and self.image_url is not None)
+            if mark_as_none_if_not_present
+            else (self.image_url != image_url)
+        ):
+            set_attribute("image_url", image_url)
+
         # @TODO: this is done for a single 'Capsule' device, review others
-        if isinstance(device_data_list, List):
-            try:
-                device_data_text = device_data_list[-1]
-            except IndexError:
-                raise TurkovAPIError(f"[{self}] Missing device data")
-
-            try:
-                device_data = loads(device_data_text)
-            except JSONDecodeError:
-                raise TurkovAPIError(f"[{self}] Improper device data encoding")
-
-            _LOGGER.debug(f"[{self}] Decoded device update data: {device_data}")
-
-            def set_attribute(attr_: str, value_: Any):
-                _LOGGER.debug(f"[{self}] Setting '{attr_}' = '{value_}'")
-                setattr(self, attr_, value_)
-                changed_attributes.add(attr_)
-
-            # Generic attribute handling process
-            for attribute_name, (
-                key,
-                converter,
-            ) in self.ATTRIBUTE_KEY_MAPPING.items():
-                if converter is False:
-                    continue
-
-                try:
-                    value = device_data[key]
-                except KeyError:
-                    if not mark_as_none_if_not_present:
-                        continue
-                    value = None
-                else:
-                    if callable(converter):
-                        value = converter(value)
-
-                if value != getattr(self, attribute_name):
-                    set_attribute(attribute_name, value)
-
-            # Custom attribute handling process
-            image_url = device_data.get("image") or None
-            if image_url:
-                # Custom image detected
-                image_url = f"{self.api.BASE_URL}/upload/{self._id}_{image_url}.jpg"
-            elif self.device_type in self.IMAGES_BY_DEVICE_TYPE:
-                # Select image based on device type
-                image_url = self.IMAGES_BY_DEVICE_TYPE[self.device_type]
-                if image_url.startswith("/"):
-                    image_url = self.api.BASE_URL + image_url
-
-            if (
-                (image_url is None and self.image_url is not None)
-                if mark_as_none_if_not_present
-                else (self.image_url != image_url)
-            ):
-                set_attribute("image_url", image_url)
-
-        else:
-            _LOGGER.warning(f"[{self}] No data received for this device. This is new.")
-            for attribute_name in self.ATTRIBUTE_KEY_MAPPING.keys():
-                value = getattr(self, attribute_name, None)
-                if value is None:
-                    continue
-                if mark_as_none_if_not_present:
-                    setattr(self, attribute_name, None)
-                    changed_attributes.add(attribute_name)
-                else:
-                    _LOGGER.warning(
-                        f"[{self}] Cowardly refusing to update device with absence of data"
-                    )
-                    break
 
         return changed_attributes
-
-    async def set_values(self, **kwargs) -> None:
-        printed_values = ", ".join(f"{k}={v}" for k, v in kwargs.items())
-        _LOGGER.debug(f"[{self}] Willing to set values: {printed_values}")
-
-        api = self._api
-        async with (
-            await api.prepare_authenticated_request(
-                METH_POST,
-                api.BASE_URL + f"/user/device/{self._id}",
-                json=kwargs,
-            )
-        ) as response:
-            try:
-                message = (await response.json())["message"]
-            except (ContentTypeError, JSONDecodeError) as exc:
-                raise TurkovAPIError(
-                    f"[{self}] Error decoding json data: {await response.text()}"
-                ) from exc
-            except (KeyError, ValueError, IndexError, TypeError, AttributeError) as exc:
-                raise TurkovAPIError(f"[{self}] Response contains no message") from exc
-
-            if message != "success":
-                raise TurkovAPIError(f"[{self}] Error calling setter: {message}")
-
-            _LOGGER.debug(f"[{self}] Successfully set: {printed_values}")
-
-    async def set_value(self, key: str, value: Any) -> None:
-        await self.set_values(**{key: value})
 
     async def toggle_heater(self, turn_on: Optional[bool] = None) -> None:
         if turn_on is None:
@@ -600,19 +751,34 @@ class TurkovDevice:
 
     @property
     def has_heater(self) -> bool:
-        return self.configuration == "heating"
+        return self.setup in ("heating", "both")
+
+    @property
+    def has_cooler(self) -> bool:
+        return self.setup in ("cooling", "both")
 
     @property
     def is_heater_on(self) -> bool:
         return self.selected_mode == "heating"
 
+    @property
+    def is_cooler_on(self) -> bool:
+        return self.selected_mode == "cooling"
+
     async def turn_on_heater(self) -> None:
+        # @TODO: might be different depending on model
         await self.set_value("mode", "1")
 
     async def turn_off_heater(self) -> None:
+        # @TODO: might be different depending on model
         await self.set_value("mode", "0")
 
     async def toggle(self, turn_on: Optional[bool] = None) -> None:
+        """
+        Toggle device (flip between on/off states)
+
+        :param turn_on: Optional discrete command.
+        """
         if turn_on is None:
             turn_on = self.is_on
 
@@ -639,3 +805,13 @@ class TurkovDevice:
             raise TurkovAPIValueError("target temperature out of bounds")
 
         await self.set_value("temp_sp", target_temperature)
+
+    async def set_target_humidity(
+        self, target_humidity: Union[int, SupportsInt]
+    ) -> None:
+        target_humidity = int(target_humidity)
+
+        if not (40 <= target_humidity <= 100):
+            raise TurkovAPIValueError("target humidity out of bounds")
+
+        await self.set_value("hum_sp", target_humidity)

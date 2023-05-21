@@ -1,0 +1,40 @@
+{
+  "config": {
+    "abort": {
+      "invalid_data": "Invalid data appeared unexpectedly during flow execution. Please, restart the configuration process."
+    },
+    "error": {
+      "invalid_auth": "Bad username and/or password",
+      "cannot_connect": "Cannot connect to host",
+      "unknown": "Unknown error occurred"
+    },
+    "step": {
+      "user": {
+        "description": "Select appropriate connection method.\n\nFor cloud (E-mail) configurations both cloud and local control are available, and will be used simultaneously to provide the best experience.",
+        "data": {
+          "method": "Connection method"
+        }
+      },
+      "email": {
+        "description": "Enter your username (E-mail address) and password for the Turkov smartphone application.\n\nTo register and add devices:\n- on Android: [Google Play](https://play.google.com/store/apps/details?id=com.llcturkov.turkov&hl=ru&pli=1), [APKPure](https://apkpure.com/turkov/com.llcturkov.turkov/download)\n- on iOS: [App Store](https://apps.apple.com/ru/app/turkov/id1464927777)",
+        "data": {
+          "email": "E-mail",
+          "password": "Password",
+          "verify_ssl": "Verify SSL Certificate"
+        }
+      },
+      "cloud_host": {
+        "description": "Provide a hostname or IP Address to connect to Turkov {device__type} {device__name} (S/N: `{device__serial_number}`) locally.\n\nTo skip this device, leave the `Host` field blank.",
+        "data": {
+          "host": "Host"
+        }
+      },
+      "host": {
+        "description": "Provide a hostname or IP Address to connect to Turkov device locally.",
+        "data": {
+          "host": "Host"
+        }
+      }
+    }
+  }
+}

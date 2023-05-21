@@ -75,11 +75,11 @@ async def async_setup_entry(
 
     add_entities = []
     for (
-        turkov_device_id,
-        turkov_update_coordinator,
+        turkov_device_identifier,
+        turkov_device_coordinator,
     ) in turkov_update_coordinators.items():
         add_keys = set(
-            turkov_update_coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING.keys()
+            turkov_device_coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING.keys()
         )
 
         if add_keys.issuperset(CLIMATE_ATTRS):
@@ -88,7 +88,11 @@ async def async_setup_entry(
         for description in SENSOR_TYPES:
             if description.key in add_keys:
                 add_entities.append(
-                    TurkovSensor(turkov_update_coordinator, description)
+                    TurkovSensor(
+                        turkov_device_coordinator=turkov_device_coordinator,
+                        turkov_device_identifier=turkov_device_identifier,
+                        description=description,
+                    )
                 )
 
     async_add_entities(add_entities, update_before_add=False)
