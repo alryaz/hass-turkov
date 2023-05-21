@@ -623,7 +623,7 @@ class TurkovDevice:
             raise RuntimeError("host not set")
 
         async with self.session.get(self.base_url + "/state") as response:
-            return await response.json()
+            return await response.json(content_type=None)
 
     async def get_state(self) -> Dict[str, Any]:
         """
@@ -637,7 +637,6 @@ class TurkovDevice:
                 aiohttp.ClientError,
                 TimeoutError,
                 JSONDecodeError,
-                ContentTypeError,
             ):
                 if not self._api:
                     raise
@@ -650,6 +649,15 @@ class TurkovDevice:
 
         raise TurkovAPIError("No method to fetch device state")
 
+    async def set_value_local(self, key: str, value: Any) -> None:
+        if not self.host:
+            raise RuntimeError("host not set")
+
+        async with self.session.post(
+            self.base_url + "/command", json={key: value}
+        ) as response:
+            return await response.json(content_type=None)
+
     async def set_value(self, key: str, value: Any) -> None:
         """
         Set device attribute.
@@ -660,17 +668,13 @@ class TurkovDevice:
         """
         if self.host:
             try:
-                async with self.session.post(
-                    self.base_url + "/command", json={key: value}
-                ) as response:
-                    return await response.json()
+                await self.set_value_local(key, value)
             except asyncio.CancelledError:
                 raise
             except (
                 aiohttp.ClientError,
                 TimeoutError,
                 JSONDecodeError,
-                ContentTypeError,
             ):
                 if not self._api:
                     raise
