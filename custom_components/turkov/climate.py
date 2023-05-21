@@ -77,80 +77,96 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         self._has_real_fan_off = False
 
     @callback
-    def _update_attr(self) -> None:
-        super()._update_attr()
+    def _update_attr_supported_features(self) -> None:
+        """Calculate and update available features."""
         device = self.coordinator.turkov_device
-        self._attr_entity_picture = device.image_url or self._attr_entity_picture
+        supported_features = ClimateEntityFeature(0)
 
-        self._attr_target_temperature = getattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE)
+        if getattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE, None) is not None:
+            supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
+
+        if getattr(device, CLIMATE_ATTR_TARGET_HUMIDITY, None) is not None:
+            supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
+
+        if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
+            supported_features |= ClimateEntityFeature.FAN_MODE
+
+        self._attr_supported_features = supported_features
+
+    @callback
+    def _update_attr_temperature(self) -> None:
+        device = self.coordinator.turkov_device
+
+        self._attr_target_temperature = getattr(
+            device, CLIMATE_ATTR_TARGET_TEMPERATURE, None
+        )
         self._attr_current_temperature = getattr(
-            device, CLIMATE_ATTR_CURRENT_TEMPERATURE
+            device, CLIMATE_ATTR_CURRENT_TEMPERATURE, None
         )
 
-        # Calculate supported features (everywhere)
-        supported_features: Optional[ClimateEntityFeature] = getattr(
-            self, "_attr_supported_features", None
-        )
-        if supported_features is None:
-            supported_features = ClimateEntityFeature(0)
+    @callback
+    def _update_attr_hvac(self) -> None:
+        """Calculate and update available HVAC modes and state."""
+        device = self.coordinator.turkov_device
+        hvac_modes = [HVACMode.OFF]
 
-            if getattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE, None) is not None:
-                supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
+        if device.has_heater:
+            hvac_modes.append(HVACMode.HEAT)
 
-            if getattr(device, CLIMATE_ATTR_TARGET_HUMIDITY, None) is not None:
-                supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
+        if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
+            hvac_modes.append(HVACMode.FAN_ONLY)
 
-            if getattr(device, CLIMATE_ATTR_FAN_MODE, None) is not None:
-                supported_features |= ClimateEntityFeature.FAN_MODE
+        self._attr_hvac_modes = hvac_modes
 
-            self._attr_supported_features = supported_features
-
-        # Calculate HVAC modes (supported everywhere)
-        if not hasattr(self, "_attr_hvac_modes"):
-            self._attr_hvac_modes = (hvac_modes := [HVACMode.OFF])
-
-            if device.has_heater:
-                hvac_modes.append(HVACMode.HEAT)
-
-            if supported_features & ClimateEntityFeature.FAN_MODE:
-                hvac_modes.append(HVACMode.FAN_ONLY)
-
-        # Calculate fan modes (supported if fan mode enabled)
-        if supported_features & ClimateEntityFeature.FAN_MODE and not hasattr(
-            self, "_attr_fan_modes"
-        ):
-            self._attr_fan_modes = (
-                fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
-            )
-
-            if device.fan_mode == "both":
-                fan_modes.insert(0, FAN_AUTO)
-
-                # @TODO: check if this is true
-                self._has_real_fan_off = True
-            elif device.fan_mode == "manual":
-                self._has_real_fan_off = False
-
-        # Set HVAC mode
         self._attr_hvac_mode = (
             (
                 HVACMode.HEAT
                 if device.is_heater_on
                 else HVACMode.FAN_ONLY
-                if supported_features & ClimateEntityFeature.FAN_MODE
+                if HVACMode.FAN_ONLY in hvac_modes
                 else HVACMode.OFF
             )
             if device.is_on
             else HVACMode.OFF
         )
 
-        # Set fan mode
-        if supported_features & ClimateEntityFeature.FAN_MODE:
-            self._attr_fan_mode = (
-                self.FAN_MODE_TO_DEVICE_MAPPING.get(device.fan_speed, FAN_AUTO)
-                if not self._has_real_fan_off and device.is_on
-                else FAN_OFF
-            )
+    @callback
+    def _update_attr_fan(self) -> None:
+        """Calculate and update available fan modes and state."""
+        device = self.coordinator.turkov_device
+        fan_modes = [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
+
+        if device.fan_mode == "both":
+            fan_modes.insert(0, FAN_AUTO)
+
+            # @TODO: check if this is true
+            self._has_real_fan_off = True
+        elif device.fan_mode == "manual":
+            self._has_real_fan_off = False
+
+        self._attr_fan_modes = fan_modes
+
+        self._attr_fan_mode = (
+            self.FAN_MODE_TO_DEVICE_MAPPING.get(device.fan_speed, FAN_AUTO)
+            if not self._has_real_fan_off and device.is_on
+            else FAN_OFF
+        )
+
+    @callback
+    def _update_attr_picture(self) -> None:
+        """Update entity picture."""
+        device = self.coordinator.turkov_device
+        self._attr_entity_picture = device.image_url or self._attr_entity_picture
+
+    @callback
+    def _update_attr(self) -> None:
+        super()._update_attr()
+
+        self._update_attr_picture()
+        self._update_attr_supported_features()
+        self._update_attr_temperature()
+        self._update_attr_hvac()
+        self._update_attr_fan()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         coordinator = self.coordinator
