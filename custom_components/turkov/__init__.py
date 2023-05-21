@@ -13,6 +13,7 @@ from homeassistant.const import (
     CONF_ACCESS_TOKEN,
     Platform,
     CONF_HOST,
+    CONF_HOSTS,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -60,13 +61,22 @@ async def async_setup_email_entry(
         },
     )
 
-    return {
-        turkov_device_id: TurkovDeviceUpdateCoordinator(
+    hosts = entry.data.get(CONF_HOSTS) or {}
+
+    turkov_device_coordinators = {}
+    for turkov_device_id, turkov_device in turkov_api_connection.devices.items():
+        if serial_number := turkov_device.serial_number:
+            try:
+                turkov_device.host = hosts[serial_number]
+            except KeyError:
+                pass
+
+        turkov_device_coordinators[turkov_device_id] = TurkovDeviceUpdateCoordinator(
             hass,
             turkov_device=turkov_device,
         )
-        for turkov_device_id, turkov_device in turkov_api_connection.devices.items()
-    }
+
+    return turkov_device_coordinators
 
 
 async def async_setup_host_entry(

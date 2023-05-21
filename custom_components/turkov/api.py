@@ -622,8 +622,12 @@ class TurkovDevice:
         if not self.host:
             raise RuntimeError("host not set")
 
-        async with self.session.get(self.base_url + "/state") as response:
-            return await response.json(content_type=None)
+        request_url = self.base_url + "/state"
+        _LOGGER.debug(f"[{self}] Requesting state locally from: {request_url}")
+        async with self.session.get(request_url) as response:
+            data = await response.json(content_type=None)
+            _LOGGER.debug(f"[{self}] Received local state data: {data}")
+            return data
 
     async def get_state(self) -> Dict[str, Any]:
         """
@@ -653,10 +657,14 @@ class TurkovDevice:
         if not self.host:
             raise RuntimeError("host not set")
 
+        request_url = self.base_url + "/command"
+        _LOGGER.debug(f"[{self}] Executing command locally to: {request_url}")
         async with self.session.post(
             self.base_url + "/command", json={key: value}
         ) as response:
-            return await response.json(content_type=None)
+            data = await response.json(content_type=None)
+            _LOGGER.debug(f"[{self}] Received local command result: {data}")
+            return data
 
     async def set_value(self, key: str, value: Any) -> None:
         """

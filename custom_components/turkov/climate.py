@@ -226,11 +226,6 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         coordinator = self.coordinator
         device = coordinator.turkov_device
 
-        if not hasattr(device, CLIMATE_ATTR_TARGET_TEMPERATURE):
-            raise HomeAssistantError(
-                "Device does not support setting target temperature"
-            )
-
         # Device calls
         if not device.is_on:
             await device.turn_on()
