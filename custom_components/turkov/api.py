@@ -172,7 +172,7 @@ class TurkovAPI:
         access_token_expires_at = self._access_token_expires_at
         if access_token_expires_at is None:
             return True
-        return access_token_expires_at < utc_to_timestamp(utcnow())
+        return (access_token_expires_at - 60) < utc_to_timestamp(utcnow())
 
     @property
     def refresh_token(self) -> Optional[str]:
@@ -189,7 +189,7 @@ class TurkovAPI:
         refresh_token_expires_at = self._refresh_token_expires_at
         if refresh_token_expires_at is None:
             return True
-        return refresh_token_expires_at < utc_to_timestamp(utcnow())
+        return (refresh_token_expires_at - 60) < utc_to_timestamp(utcnow())
 
     @property
     def session(self) -> aiohttp.ClientSession:
@@ -206,11 +206,13 @@ class TurkovAPI:
         user_email: Optional[str] = None,
         password: Optional[str] = None,
     ) -> None:
-        """@TODO"""
         if not user_email:
             user_email = self._user_email
         if not password:
             password = self._password
+
+        if not (user_email and password):
+            raise ValueError("email and/or password empty")
 
         _LOGGER.info(f"[{self}] Preparing to authenticate with email/password combo")
         async with self._session.post(
@@ -220,61 +222,82 @@ class TurkovAPI:
                 "password": password,
             },
         ) as response:
-            try:
-                data: Union[
-                    SignInResponseDict, ErrorResponseDict
-                ] = await response.json()
+            await self._process_auth_request(response)
 
-                _LOGGER.debug(f"[{self}] Authentication response data: {data}")
+    async def authenticate_with_token(
+        self, refresh_token: Optional[str] = None
+    ) -> None:
+        if not refresh_token:
+            if self.refresh_token_needs_update:
+                raise RuntimeError("refresh token expired")
+            refresh_token = self._refresh_token
 
-                # Pin current timestamp
-                current_timestamp = utc_to_timestamp(utcnow())
+        _LOGGER.info(f"[{self}] Preparing to authenticate with refresh token")
+        async with self._session.get(
+            self.BASE_URL + "/user/token",
+            headers={
+                "x-access-token": refresh_token,
+            },
+        ) as response:
+            await self._process_auth_request(response)
 
-                # Extract tokens and expiry information
-                access_token = data["accessToken"]
-                access_token_expires_at = int(data["accessTokenExpiresAt"])
-                refresh_token = data["refreshToken"]
-                refresh_token_expires_at = int(data["refreshTokenExpiresAt"])
+    async def _process_auth_request(self, request) -> None:
+        """@TODO"""
+        try:
+            async with request as response:
+                data = await response.json()
+        except (ContentTypeError, JSONDecodeError) as exc:
+            raise TurkovAPIAuthenticationError("Server returned bad response") from exc
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            raise TurkovAPIAuthenticationError("Server did not respond") from exc
 
-            except (ContentTypeError, JSONDecodeError) as exp:
-                raise TurkovAPIAuthenticationError(
-                    f"Server returned invalid response"
-                ) from exp
+        _LOGGER.debug(f"[{self}] Authentication response data: {data}")
 
-            except KeyError as exp:
-                raise TurkovAPIAuthenticationError(
-                    f"Server did not provide auth data {exp}: {data.get('message') or '<no message>'}"
-                ) from exp
+        # Pin current timestamp
+        current_timestamp = utc_to_timestamp(utcnow())
 
-            except (ValueError, TypeError) as exp:
-                raise TurkovAPIAuthenticationError(f"Server provided bad data: {exp}")
+        try:
+            # Extract tokens and expiry information
+            access_token = data["accessToken"]
+            access_token_expires_at = int(data["accessTokenExpiresAt"])
+            refresh_token = data["refreshToken"]
+            refresh_token_expires_at = int(data["refreshTokenExpiresAt"])
+        except KeyError as exc:
+            raise TurkovAPIAuthenticationError(
+                f"Server did not provide auth data {exc}: {data.get('message') or '<no message>'}"
+            ) from exc
+        except (ValueError, TypeError) as exc:
+            raise TurkovAPIAuthenticationError(f"Server provided bad data: {exc}")
 
-            # Some data validation
-            if not (access_token or refresh_token):
-                raise TurkovAPIAuthenticationError(f"Server provided empty auth data")
-            if access_token_expires_at < current_timestamp:
-                raise TurkovAPIAuthenticationError(
-                    f"Server provided expired access token"
-                )
-            if refresh_token_expires_at < current_timestamp:
-                raise TurkovAPIAuthenticationError(
-                    f"Server provided expired refresh token"
-                )
+        # Some data validation
+        if not (access_token or refresh_token):
+            raise TurkovAPIAuthenticationError(f"Server provided empty auth data")
+        if access_token_expires_at < current_timestamp:
+            raise TurkovAPIAuthenticationError(f"Server provided expired access token")
+        if refresh_token_expires_at < current_timestamp:
+            raise TurkovAPIAuthenticationError(f"Server provided expired refresh token")
 
-            _LOGGER.info(f"[{self}] Successful authentication, updating data")
+        _LOGGER.info(f"[{self}] Successful authentication, updating data")
 
-            # Update auth data
-            self._access_token = access_token
-            self._refresh_token = refresh_token
-            self._access_token_expires_at = access_token_expires_at
-            self._refresh_token_expires_at = refresh_token_expires_at
+        # Update auth data
+        self._access_token = access_token
+        self._refresh_token = refresh_token
+        self._access_token_expires_at = access_token_expires_at
+        _LOGGER.debug(
+            f"[{self}] Access token expires at: {access_token_expires_at} "
+            f"(in {access_token_expires_at - current_timestamp} seconds)"
+        )
+        self._refresh_token_expires_at = refresh_token_expires_at
+        _LOGGER.debug(
+            f"[{self}] Refresh token expires at: {access_token_expires_at} "
+            f"(in {refresh_token_expires_at - current_timestamp} seconds)"
+        )
 
     async def authenticate(self) -> None:
         if not self.refresh_token_needs_update:
             _LOGGER.debug(f"[{self}] Auth called, refresh not yet expired")
             try:
-                await self.update_access_token()
-                return
+                await self.authenticate_with_token()
             except asyncio.CancelledError:
                 raise
             except BaseException as exp:
@@ -282,11 +305,10 @@ class TurkovAPI:
                 _LOGGER.warning(
                     f"[{self}] Failed to refresh access token, using regular auth"
                 )
+            else:
+                return
 
         await self.authenticate_with_email()
-
-    async def update_access_token(self, refresh_token: Optional[str] = None) -> None:
-        raise NotImplementedError
 
     async def prepare_authenticated_request(
         self,
@@ -322,10 +344,9 @@ class TurkovAPI:
                 request_tag=(None if force else "user_data"),
             )
         ) as response:
-            # # @TODO
-            # if response.status == 304:
-            #     _LOGGER.debug(f"[{self}] User data not modified, no updates")
-            #     return
+            if response.status == 304:
+                _LOGGER.debug(f"[{self}] User data not modified, no updates")
+                return
 
             try:
                 user_data: UserDataResponseDict = await response.json()
@@ -390,9 +411,6 @@ class TurkovAPI:
                     f"[{self}] Discarding obsolete device: {existing_devices[id_]}"
                 )
                 del existing_devices[id_]
-
-            # # @TODO
-            # self._request_history["user_data"] = ...
 
     @_handle_preliminary_auth
     async def get_device_state(self, device_id: str) -> Dict[str, Any]:
