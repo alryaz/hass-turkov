@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Set, Iterable, Dict
+from typing import Set, Dict
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -168,4 +168,4 @@ class TurkovDeviceUpdateCoordinator(DataUpdateCoordinator[Set[str]]):
         except BaseException as e:
             raise update_coordinator.UpdateFailed(
                 f"Unable to fetch data for Turkov device: {e}"
-            )
+            ) from e

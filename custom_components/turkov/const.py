@@ -1,5 +1,5 @@
 """The Turkov Integration"""
-from typing import Final, Tuple, FrozenSet
+from typing import Final
 
 DOMAIN = "turkov"
 

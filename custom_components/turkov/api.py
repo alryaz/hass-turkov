@@ -21,8 +21,9 @@ from typing import (
 
 import aiohttp
 from aiohttp import ContentTypeError
-from aiohttp.hdrs import METH_GET, IF_NONE_MATCH, METH_POST
+from aiohttp.hdrs import METH_GET, IF_NONE_MATCH, METH_POST, ETAG
 from aiohttp.typedefs import LooseHeaders
+from aiohttp.web_exceptions import HTTPForbidden, HTTPUnauthorized
 from homeassistant.util.dt import utcnow, utc_to_timestamp
 from multidict import CIMultiDict
 
@@ -92,9 +93,17 @@ class TurkovAPI:
             # Perform execution
             try:
                 return await fn(self, *args, **kwargs)
-            except TurkovAPIAuthenticationError:
+            except (
+                TurkovAPIAuthenticationError,
+                HTTPForbidden,
+                HTTPUnauthorized,
+            ) as exc:
                 if authentication_attempted or not handle_authentication:
-                    raise
+                    if isinstance(exc, TurkovAPIAuthenticationError):
+                        raise
+                    raise TurkovAPIAuthenticationError(
+                        "Unauthorized request performed"
+                    ) from exc
                 _LOGGER.debug(
                     f"[{self}] Performing authentication because previous request failed due to authentication errors"
                 )
@@ -337,98 +346,122 @@ class TurkovAPI:
     @_handle_preliminary_auth
     async def update_user_data(self, force: bool = False) -> None:
         _LOGGER.debug(f"[{self}] Updating user information and list of devices")
+        request_tag = "user_data"
+
         async with (
             await self.prepare_authenticated_request(
                 METH_GET,
                 self.BASE_URL + "/user",
-                request_tag=(None if force else "user_data"),
+                request_tag=(None if force else request_tag),
             )
         ) as response:
-            if response.status == 304:
+            if not force and response.status == 304:
                 _LOGGER.debug(f"[{self}] User data not modified, no updates")
                 return
 
+            response_tag = response.headers.get(ETAG)
+
             try:
                 user_data: UserDataResponseDict = await response.json()
-
-                _LOGGER.debug(f"[{self}] User data response: {user_data}")
-
-                device_datum = user_data["devices"]
-                user_email = user_data["userEmail"]
-                first_name = user_data["firstName"]
-                last_name = user_data["lastName"]
-                middle_name = user_data["fathersName"]
-
-            except (KeyError, JSONDecodeError) as exp:
+            except (JSONDecodeError, ContentTypeError) as exp:
                 raise TurkovAPIAuthenticationError(
                     f"Server did not provide user and/or device datum: {exp}"
                 ) from exp
 
-            self._user_email = user_email
+        _LOGGER.debug(f"[{self}] User data response: {user_data}")
 
-            # Optional data
-            self.first_name = first_name
-            self.last_name = last_name
-            self.middle_name = middle_name
+        try:
+            device_datum = user_data["devices"]
+            user_email = user_data["userEmail"]
+            first_name = user_data["firstName"]
+            last_name = user_data["lastName"]
+            middle_name = user_data["fathersName"]
+        except KeyError as exc:
+            raise TurkovAPIError(
+                f"Server did not provide user and/or device datum: {exp}"
+            ) from exc
 
-            existing_devices = self._devices
-            leftover_devices = set(existing_devices.keys())
-            for device_data in device_datum:
-                try:
-                    id_ = device_data["_id"]
-                except KeyError:
-                    _LOGGER.warning(
-                        f"[{self}] Device data does not contain ID: {device_data}"
-                    )
-                    continue
-                if not id_:
-                    _LOGGER.warning(
-                        f"[{self}] Device data contains empty ID: {device_data}"
-                    )
-                    continue
+        self._user_email = user_email
 
-                try:
-                    device = existing_devices[id_]
-                    _LOGGER.info(f"[{self}] Found existing device: {device}")
-                except KeyError:
-                    _LOGGER.info(
-                        f"[{self}] Creating new device with ID: {_log_hide_id(id_)}"
-                    )
-                    device = TurkovDevice(id_, self)
-                    existing_devices[id_] = device
-                else:
-                    leftover_devices.discard(id_)
+        # Optional data
+        self.first_name = first_name
+        self.last_name = last_name
+        self.middle_name = middle_name
 
-                device.type = device_data["deviceType"]
-                device.name = device_data["deviceName"]
-                device.serial_number = device_data["serialNumber"]
-                device.pin = device_data["pin"]
-                device.firmware_version = device_data["firmVer"]
-
-            # Discard leftover devices
-            for id_ in leftover_devices:
-                _LOGGER.info(
-                    f"[{self}] Discarding obsolete device: {existing_devices[id_]}"
+        existing_devices = self._devices
+        leftover_devices = set(existing_devices.keys())
+        for device_data in device_datum:
+            try:
+                id_ = device_data["_id"]
+            except KeyError:
+                _LOGGER.warning(
+                    f"[{self}] Device data does not contain ID: {device_data}"
                 )
-                del existing_devices[id_]
+                continue
+            if not id_:
+                _LOGGER.warning(
+                    f"[{self}] Device data contains empty ID: {device_data}"
+                )
+                continue
+
+            try:
+                device = existing_devices[id_]
+                _LOGGER.info(f"[{self}] Found existing device: {device}")
+            except KeyError:
+                _LOGGER.info(
+                    f"[{self}] Creating new device with ID: {_log_hide_id(id_)}"
+                )
+                device = TurkovDevice(id_, self)
+                existing_devices[id_] = device
+            else:
+                leftover_devices.discard(id_)
+
+            device.type = device_data["deviceType"]
+            device.name = device_data["deviceName"]
+            device.serial_number = device_data["serialNumber"]
+            device.pin = device_data["pin"]
+            device.firmware_version = device_data["firmVer"]
+
+        if response_tag:
+            self._request_history[request_tag] = response_tag
+
+        # Discard leftover devices
+        for id_ in leftover_devices:
+            _LOGGER.info(
+                f"[{self}] Discarding obsolete device: {existing_devices[id_]}"
+            )
+            del existing_devices[id_]
 
     @_handle_preliminary_auth
-    async def get_device_state(self, device_id: str) -> Dict[str, Any]:
+    async def get_device_state(
+        self,
+        device_id: str,
+        *,
+        force: bool = True,
+    ) -> Optional[Dict[str, Any]]:
         _LOGGER.debug(f"[{self}] Fetching state for device {device_id}")
+        request_tag = f"device_state__{device_id}"
 
         async with (
             await self.prepare_authenticated_request(
                 METH_GET,
                 self.BASE_URL + "/user/devices",
                 params={"device": f"{device_id}_state"},
+                request_tag=(None if force else request_tag),
             )
         ) as response:
+            if not force and response.status == 304:
+                _LOGGER.debug(f"[{self}] Device data not modified, no updates")
+                return
+
+            response_tag = response.headers.get(ETAG)
+
             try:
                 device_data_list = await response.json()
-            except (ContentTypeError, JSONDecodeError):
+            except (ContentTypeError, JSONDecodeError) as exc:
                 raise TurkovAPIError(
                     f"[{self}] Error decoding json data: {await response.text()}"
-                )
+                ) from exc
 
         # Process device data
         try:
@@ -447,11 +480,14 @@ class TurkovAPI:
 
             if not isinstance(device_data, dict):
                 raise TurkovAPIError("Improper device data format")
-        except:
+        except Exception:
             _LOGGER.error(
                 f"[{self}] Failed to fetch state for device {device_id}: {device_data_list}"
             )
             raise
+
+        if response_tag:
+            self._request_history[request_tag] = response_tag
 
         _LOGGER.debug(
             f"[{self}] Fetching state for device {device_id} successful: {device_data}"
@@ -475,8 +511,10 @@ class TurkovAPI:
                 raise TurkovAPIError(
                     f"[{self}] Error decoding json data: {await response.text()}"
                 ) from exc
-            except (KeyError, ValueError, IndexError, TypeError, AttributeError) as exc:
-                raise TurkovAPIError(f"[{self}] Response contains no message") from exc
+            except (LookupError, ValueError, TypeError, AttributeError) as exc:
+                raise TurkovAPIError(
+                    f"[{self}] Response contains no message: {await response.text()}"
+                ) from exc
 
         if message != "success":
             raise TurkovAPIError(f"[{self}] Error calling setter: {message}")
@@ -622,6 +660,7 @@ class TurkovDevice:
     def base_url(self) -> str:
         if (host := self.host) is None:
             raise RuntimeError("host not set")
+        # noinspection HttpUrlsUsage
         return f"http://{host}:{self.port}"
 
     @property
@@ -647,9 +686,10 @@ class TurkovDevice:
             _LOGGER.debug(f"[{self}] Received local state data: {data}")
             return data
 
-    async def get_state(self) -> Dict[str, Any]:
+    async def get_state(self, *, force: bool = True) -> Optional[Dict[str, Any]]:
         """
         Get device state attributes.
+        :param force: Bypass request caching (on by default)
         :return: Dictionary of attributes to be mapped onto device.
         """
         if self.host:
@@ -667,7 +707,7 @@ class TurkovDevice:
                 )
 
         if self._api:
-            return await self._api.get_device_state(self._id)
+            return await self._api.get_device_state(self._id, force=force)
 
         raise TurkovAPIError("No method to fetch device state")
 
@@ -713,17 +753,23 @@ class TurkovDevice:
 
         raise TurkovAPIError("No method to set device values")
 
-    async def update_state(self, mark_as_none_if_not_present: bool = False) -> Set[str]:
+    async def update_state(
+        self, mark_as_none_if_not_present: bool = False, force: bool = False
+    ) -> Set[str]:
         """
         Update state of target device.
 
         :param mark_as_none_if_not_present: Mark expected attributes as None if not present in response.
+        :param force: Bypass request caching (off by default)
         :return: Set of changed attributes (including set to None if `mark_as_none_if_present` is set to True)
         """
 
-        device_data = await self.get_state()
-
+        device_data = await self.get_state(force=force)
         changed_attributes = set()
+
+        if device_data is None:
+            # Return if nothing is changed
+            return changed_attributes
 
         def set_attribute(attr_: str, value_: Any):
             _LOGGER.debug(f"[{self}] Setting '{attr_}' = '{value_}'")
@@ -775,9 +821,15 @@ class TurkovDevice:
 
     async def toggle_heater(self, turn_on: Optional[bool] = None) -> None:
         if turn_on is None:
-            turn_on = self.selected_mode == "none"
+            turn_on = not self.is_heater_on
 
-        await (self.turn_on_heater if turn_on else self.turn_off_heater)()
+        await (self.turn_on_heater if turn_on else self.turn_off_hvac)()
+
+    async def toggle_cooler(self, turn_on: Optional[bool] = None) -> None:
+        if turn_on is None:
+            turn_on = not self.is_cooler_on
+
+        await (self.turn_on_cooler if turn_on else self.turn_off_hvac)()
 
     @property
     def has_heater(self) -> bool:
@@ -795,13 +847,15 @@ class TurkovDevice:
     def is_cooler_on(self) -> bool:
         return self.selected_mode == "cooling"
 
+    async def turn_off_hvac(self) -> None:
+        await self.set_value("mode", "0")
+
     async def turn_on_heater(self) -> None:
         # @TODO: might be different depending on model
         await self.set_value("mode", "1")
 
-    async def turn_off_heater(self) -> None:
-        # @TODO: might be different depending on model
-        await self.set_value("mode", "0")
+    async def turn_on_cooler(self) -> None:
+        await self.set_value("mode", "2")
 
     async def toggle(self, turn_on: Optional[bool] = None) -> None:
         """

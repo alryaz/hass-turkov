@@ -1,5 +1,5 @@
 """Support for Turkov climate."""
-from typing import Any, Dict, ClassVar, Optional
+from typing import Any, Dict
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -48,14 +48,7 @@ async def async_setup_entry(
 class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     """BAF climate auto comfort."""
 
-    FAN_MODE_TO_DEVICE_MAPPING: ClassVar[Dict[str, str]] = {
-        "0": FAN_OFF,
-        "A": FAN_AUTO,
-        "1": FAN_LOW,
-        "2": FAN_MEDIUM,
-        "3": FAN_HIGH,
-    }
-
+    _attr_supported_features = ClimateEntityFeature.FAN_MODE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1.0
     _attr_min_temp = 5
@@ -64,21 +57,21 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._attr_unique_id = "climate__" + self._attr_unique_id
-        self._has_real_fan_off = False
 
     @callback
     def _update_attr_supported_features(self) -> None:
         """Calculate and update available features."""
         device = self.coordinator.turkov_device
 
-        if device.target_temperature is not None:
+        if (device.has_heater or device.has_cooler) and not (
+            ClimateEntityFeature.TARGET_TEMPERATURE & self._attr_supported_features
+        ):
             self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
 
-        if device.target_humidity is not None:
+        if device.target_humidity is not None and not (
+            ClimateEntityFeature.TARGET_HUMIDITY & self._attr_supported_features
+        ):
             self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
-
-        if device.fan_mode is not None:
-            self._attr_supported_features |= ClimateEntityFeature.FAN_MODE
 
     @callback
     def _update_attr_temperature(self) -> None:
@@ -106,22 +99,31 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     def _update_attr_hvac(self) -> None:
         """Calculate and update available HVAC modes and state."""
         device = self.coordinator.turkov_device
-        hvac_modes = [HVACMode.OFF]
 
-        if device.has_heater:
+        # Calculate HVAC modes
+        if not (hvac_modes := getattr(self, "_attr_hvac_modes", None)):
+            self._attr_hvac_modes = (hvac_modes := [HVACMode.OFF])
+        if device.has_heater and HVACMode.HEAT not in hvac_modes:
             hvac_modes.append(HVACMode.HEAT)
-
-        if device.fan_mode is not None:
+        if device.has_cooler and HVACMode.COOL not in hvac_modes:
+            hvac_modes.append(HVACMode.COOL)
+        if (
+            device.has_heater or device.has_cooler
+        ) and HVACMode.FAN_ONLY not in hvac_modes:
             hvac_modes.append(HVACMode.FAN_ONLY)
+        if device.target_humidity is not None and HVACMode.DRY not in hvac_modes:
+            hvac_modes.append(HVACMode.DRY)
 
-        self._attr_hvac_modes = hvac_modes
+        # Calculate current HVAC mode
         self._attr_hvac_mode = (
             (
-                HVACMode.HEAT
+                HVACMode.DRY
+                if HVACMode.DRY in hvac_modes
+                else HVACMode.HEAT
                 if device.is_heater_on
+                else HVACMode.COOL
+                if device.is_cooler_on
                 else HVACMode.FAN_ONLY
-                if HVACMode.FAN_ONLY in hvac_modes
-                else HVACMode.OFF
             )
             if device.is_on
             else HVACMode.OFF
@@ -131,23 +133,22 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     def _update_attr_fan(self) -> None:
         """Calculate and update available fan modes and state."""
         device = self.coordinator.turkov_device
-        fan_modes = [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
 
-        if device.fan_mode == "both":
+        # Calculate fan modes
+        if not (fan_modes := getattr(self, "_attr_fan_modes", None)):
+            self._attr_fan_modes = (
+                fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
+            )
+        if device.fan_mode == "both" and FAN_AUTO not in fan_modes:
             fan_modes.insert(0, FAN_AUTO)
 
-            # @TODO: check if this is true
-            self._has_real_fan_off = True
-        elif device.fan_mode == "manual":
-            self._has_real_fan_off = False
-
-        self._attr_fan_modes = fan_modes
-
-        self._attr_fan_mode = (
-            self.FAN_MODE_TO_DEVICE_MAPPING.get(device.fan_speed, FAN_AUTO)
-            if not self._has_real_fan_off and device.is_on
-            else FAN_OFF
-        )
+        # Calculate current fan mode
+        if (fan_speed := device.fan_speed) == "auto":
+            self._attr_fan_mode = FAN_AUTO
+        elif fan_speed in ("1", "2", "3"):
+            self._attr_fan_mode = (FAN_LOW, FAN_MEDIUM, FAN_HIGH)[int(fan_speed) - 1]
+        else:
+            self._attr_fan_mode = FAN_OFF
 
     @callback
     def _update_attr_picture(self) -> None:
@@ -170,17 +171,21 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         coordinator = self.coordinator
         device = coordinator.turkov_device
 
-        if not self._has_real_fan_off and fan_mode == FAN_OFF:
+        if fan_mode == FAN_OFF:
+            # Handle virtual fan off mode
             if device.is_on:
                 await device.turn_off()
 
         else:
-            try:
-                fan_speed_value = list(self.FAN_MODE_TO_DEVICE_MAPPING.keys())[
-                    list(self.FAN_MODE_TO_DEVICE_MAPPING.values()).index(fan_mode)
-                ]
-            except ValueError:
-                raise HomeAssistantError(f"Fan mode {fan_mode} not found in mapping")
+            # Handle all other existing modes
+            if fan_mode == FAN_AUTO:
+                fan_speed_value = "A"
+            elif fan_mode in (FAN_LOW, FAN_MEDIUM, FAN_HIGH):
+                fan_speed_value = str(
+                    (FAN_LOW, FAN_MEDIUM, FAN_HIGH).index(fan_mode) + 1
+                )
+            else:
+                raise ValueError(f"Fan mode {fan_mode} not found in mapping")
 
             # Device calls
             if not device.is_on:
@@ -192,9 +197,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the HVAC mode."""
-        if (hvac_modes := self._attr_hvac_modes) is None:
-            raise HomeAssistantError("HVAC modes not yet loaded")
-        if hvac_mode not in hvac_modes:
+        if hvac_mode not in getattr(self, "_attr_hvac_modes", ()):
             raise ValueError("HVAC mode not supported")
 
         coordinator = self.coordinator
@@ -207,14 +210,24 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         else:
             if not device.is_on:
                 await device.turn_on()
-            if hvac_mode == HVACMode.HEAT:
-                if not device.is_heater_on:
-                    await device.turn_on_heater()
+            if hvac_mode == HVACMode.FAN_ONLY:
+                # @TODO: handle dryer?
+                if device.is_heater_on or device.is_cooler_on:
+                    await device.turn_off_hvac()
+            elif hvac_mode == HVACMode.DRY:
+                # @TODO: check whether this is enough
+                await device.set_target_humidity(self._attr_target_humidity)
+            else:
+                if hvac_mode == HVACMode.HEAT:
+                    if not device.is_heater_on:
+                        await device.turn_on_heater()
+                elif hvac_mode == HVACMode.COOL:
+                    if not device.is_cooler_on:
+                        await device.turn_on_cooler()
+                else:
+                    raise ValueError("unsupported HVAC mode")
                 # Send target temperature because turn off resets heater
                 await device.set_target_temperature(self._attr_target_temperature)
-            elif hvac_mode == HVACMode.FAN_ONLY:
-                if device.is_heater_on:
-                    await device.turn_off_heater()
 
         # Refresh call
         await coordinator.async_refresh()
