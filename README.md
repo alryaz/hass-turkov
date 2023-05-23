@@ -12,6 +12,9 @@
 
 ## Установка
 ### Посредством HACS
+
+[![Открыть Ваш Home Assistant и открыть репозиторий внутри Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alryaz&repository=hass-turkov&category=integration)
+
 1. Откройте HACS (через `Extensions` в боковой панели)
 1. Добавьте новый произвольный репозиторий:
    1. Выберите `Integration` (`Интеграция`) в качестве типа репозитория
