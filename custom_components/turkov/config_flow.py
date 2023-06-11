@@ -217,10 +217,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.error(f"Connection error: {exc}", exc_info=exc)
             errors["base"] = "cannot_connect"
         else:
-
-
-
-
             config = self._current_config
 
             await self.async_set_unique_id(f"device__{host}")
