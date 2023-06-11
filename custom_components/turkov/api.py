@@ -834,11 +834,11 @@ class TurkovDevice:
 
     @property
     def has_heater(self) -> bool:
-        return self.setup in ("heating", "both")
+        return self.setup in ("heating", "both", None)
 
     @property
     def has_cooler(self) -> bool:
-        return self.setup in ("cooling", "both")
+        return self.setup in ("cooling", "both", None)
 
     @property
     def is_heater_on(self) -> bool:
