@@ -63,7 +63,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         """Calculate and update available features."""
         device = self.coordinator.turkov_device
 
-        if (device.has_heater or device.has_cooler) and not (
+        if device.target_temperature is not None and not (
             ClimateEntityFeature.TARGET_TEMPERATURE & self._attr_supported_features
         ):
             self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
