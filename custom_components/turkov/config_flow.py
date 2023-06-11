@@ -213,12 +213,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             await device.get_state()
-        except (TurkovAPIError, aiohttp.ClientError):
+        except (TurkovAPIError, aiohttp.ClientError) as exc:
+            _LOGGER.error(f"Connection error: {exc}", exc_info=exc)
             errors["base"] = "cannot_connect"
         else:
-            serial_number = device.serial_number
-            if not serial_number:
-                return self.async_abort("invalid_data")
+
+
+
 
             config = self._current_config
 
