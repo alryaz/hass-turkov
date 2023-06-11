@@ -217,14 +217,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.error(f"Connection error: {exc}", exc_info=exc)
             errors["base"] = "cannot_connect"
         else:
-            config = self._current_config
-
             await self.async_set_unique_id(f"device__{host}")
             self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
                 title=host,
-                data=config,
+                data={CONF_HOST: host},
             )
 
         return self.async_show_form(
@@ -232,8 +230,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             data_schema=self.add_suggested_values_to_schema(
                 STEP_CLOUD_HOST_DATA_SCHEMA,
-                {
-                    CONF_HOST: user_input[CONF_HOST],
-                },
+                {CONF_HOST: host},
             ),
         )
