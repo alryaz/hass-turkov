@@ -553,7 +553,7 @@ class TurkovDevice:
         "indoor_temperature": ("in_temp", _float_less),
         "image_url": ("image", False),
         "indoor_humidity": ("in_humid", _float_less),
-        "air_pressure": ("air_press", float),
+        "air_pressure": ("air_pres", float),
         "co2_level": ("CO2_level", float),
         "current_temperature": ("temp_curr", _float_less),
         "current_humidity": ("hum_curr", _float_less),
