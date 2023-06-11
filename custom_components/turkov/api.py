@@ -734,7 +734,7 @@ class TurkovDevice:
         """
         if self.host:
             try:
-                await self.set_value_local(key, value)
+                return await self.set_value_local(key, value)
             except asyncio.CancelledError:
                 raise
             except (
