@@ -798,15 +798,16 @@ class TurkovDevice:
                 set_attribute(attribute_name, value)
 
         # Custom attribute handling process
+        base_url = (self._api or TurkovAPI).BASE_URL
         image_url = device_data.get("image") or None
-        if image_url:
+        if image_url and self._id:
             # Custom image detected
-            image_url = f"{self._api.BASE_URL}/upload/{self._id}_{image_url}.jpg"
+            image_url = f"{base_url}/upload/{self._id}_{image_url}.jpg"
         elif self.type in self.IMAGES_BY_DEVICE_TYPE:
             # Select image based on device type
             image_url = self.IMAGES_BY_DEVICE_TYPE[self.type]
             if image_url.startswith("/"):
-                image_url = self._api.BASE_URL + image_url
+                image_url = base_url + image_url
 
         if (
             (image_url is None and self.image_url is not None)
