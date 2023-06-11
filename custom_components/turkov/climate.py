@@ -48,7 +48,6 @@ async def async_setup_entry(
 class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     """BAF climate auto comfort."""
 
-    _attr_supported_features = ClimateEntityFeature.FAN_MODE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1.0
     _attr_min_temp = 5
@@ -63,15 +62,14 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         """Calculate and update available features."""
         device = self.coordinator.turkov_device
 
-        if device.target_temperature is not None and not (
-            ClimateEntityFeature.TARGET_TEMPERATURE & self._attr_supported_features
-        ):
-            self._attr_supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
-
-        if device.target_humidity is not None and not (
-            ClimateEntityFeature.TARGET_HUMIDITY & self._attr_supported_features
-        ):
-            self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
+        supported_features = ClimateEntityFeature.FAN_MODE
+        if getattr(self, "_attr_supported_features", None):
+            supported_features |= self._attr_supported_features
+        if device.target_temperature is not None:
+            supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE
+        if device.target_humidity is not None:
+            supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
+        self._attr_supported_features = supported_features
 
     @callback
     def _update_attr_temperature(self) -> None:
@@ -101,18 +99,18 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         device = self.coordinator.turkov_device
 
         # Calculate HVAC modes
-        if not (hvac_modes := getattr(self, "_attr_hvac_modes", None)):
-            self._attr_hvac_modes = (hvac_modes := [HVACMode.OFF])
-        if device.has_heater and HVACMode.HEAT not in hvac_modes:
-            hvac_modes.append(HVACMode.HEAT)
-        if device.has_cooler and HVACMode.COOL not in hvac_modes:
-            hvac_modes.append(HVACMode.COOL)
-        if (
-            device.has_heater or device.has_cooler
-        ) and HVACMode.FAN_ONLY not in hvac_modes:
-            hvac_modes.append(HVACMode.FAN_ONLY)
-        if device.target_humidity is not None and HVACMode.DRY not in hvac_modes:
-            hvac_modes.append(HVACMode.DRY)
+        hvac_modes = {HVACMode.OFF}
+        if getattr(self, "_attr_hvac_modes", None):
+            hvac_modes.update(self._attr_hvac_modes)
+        if device.has_heater:
+            hvac_modes.add(HVACMode.HEAT)
+        if device.has_cooler:
+            hvac_modes.add(HVACMode.COOL)
+        if device.has_heater or device.has_cooler:
+            hvac_modes.add(HVACMode.FAN_ONLY)
+        if device.target_humidity is not None:
+            hvac_modes.add(HVACMode.DRY)
+        self._attr_hvac_modes = list(hvac_modes)
 
         # Calculate current HVAC mode
         self._attr_hvac_mode = (
@@ -135,12 +133,12 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         device = self.coordinator.turkov_device
 
         # Calculate fan modes
-        if not (fan_modes := getattr(self, "_attr_fan_modes", None)):
-            self._attr_fan_modes = (
-                fan_modes := [FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF]
-            )
-        if device.fan_mode == "both" and FAN_AUTO not in fan_modes:
-            fan_modes.insert(0, FAN_AUTO)
+        fan_modes = {FAN_LOW, FAN_MEDIUM, FAN_HIGH, FAN_OFF}
+        if getattr(self, "_attr_fan_modes", None):
+            fan_modes.update(self._attr_fan_modes)
+        if device.fan_mode == "both":
+            fan_modes.add(FAN_AUTO)
+        self._attr_fan_modes = list(fan_modes)
 
         # Calculate current fan mode
         if (fan_speed := device.fan_speed) == "auto":
