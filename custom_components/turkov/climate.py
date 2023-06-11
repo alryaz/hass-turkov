@@ -179,7 +179,7 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         else:
             # Handle all other existing modes
             if fan_mode == FAN_AUTO:
-                fan_speed_value = "A"
+                fan_speed_value = "auto"
             elif fan_mode in (FAN_LOW, FAN_MEDIUM, FAN_HIGH):
                 fan_speed_value = str(
                     (FAN_LOW, FAN_MEDIUM, FAN_HIGH).index(fan_mode) + 1
