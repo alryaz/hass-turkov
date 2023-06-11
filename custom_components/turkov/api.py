@@ -694,7 +694,7 @@ class TurkovDevice:
         """
         if self.host:
             try:
-                await self.get_state_local()
+                return await self.get_state_local()
             except (
                 aiohttp.ClientError,
                 TimeoutError,
