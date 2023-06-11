@@ -7,6 +7,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import TurkovDeviceUpdateCoordinator
 from .const import DOMAIN
+from .api import TurkovAPI
 
 
 class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
@@ -61,7 +62,7 @@ class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
         """Return the device_info of the device."""
         device = self.coordinator.turkov_device
         return DeviceInfo(
-            configuration_url=device.api.BASE_URL,
+            configuration_url=(device.api or TurkovAPI).BASE_URL,
             identifiers={(DOMAIN, self._turkov_device_identifier)},
             manufacturer="Turkov",
             model=device.type,
