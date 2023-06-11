@@ -876,7 +876,7 @@ class TurkovDevice:
         await self.set_value("on", "false")
 
     async def set_fan_speed(self, fan_speed: str) -> None:
-        if fan_speed not in ("A", "0", "1", "2", "3"):
+        if fan_speed not in ("auto", "0", "1", "2", "3"):
             raise TurkovAPIValueError("valid fan speed not specified")
 
         await self.set_value("fan_speed", fan_speed)
