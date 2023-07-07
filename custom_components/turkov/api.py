@@ -434,11 +434,16 @@ class TurkovAPI:
             else:
                 leftover_devices.discard(id_)
 
-            device.type = device_data["deviceType"]
-            device.name = device_data["deviceName"]
-            device.serial_number = device_data["serialNumber"]
-            device.pin = device_data["pin"]
-            device.firmware_version = device_data["firmVer"]
+            if "deviceType" in device_data:
+                device.type = device_data["deviceType"]
+            if "deviceName" in device_data:
+                device.name = device_data["deviceName"]
+            if "serialNumber" in device_data:
+                device.serial_number = device_data["serialNumber"]
+            if "pin" in device_data:
+                device.pin = device_data["pin"]
+            if "firmVer" in device_data:
+                device.firmware_version = device_data["firmVer"]
 
         if response_tag:
             self._request_history[request_tag] = response_tag
