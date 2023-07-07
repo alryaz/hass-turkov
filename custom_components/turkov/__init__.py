@@ -147,7 +147,7 @@ async def async_setup_host_entry(
             hass,
             turkov_device=turkov_device,
             host_config=STEP_HOST_DATA_SCHEMA(
-                dict(entry.options),
+                dict(entry.data),
             ),
         )
     }
