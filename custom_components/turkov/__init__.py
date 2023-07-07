@@ -146,7 +146,9 @@ async def async_setup_host_entry(
         entry.data[CONF_HOST]: TurkovDeviceUpdateCoordinator(
             hass,
             turkov_device=turkov_device,
-            host_config=STEP_HOST_DATA_SCHEMA(entry.options),
+            host_config=STEP_HOST_DATA_SCHEMA(
+                dict(entry.options),
+            ),
         )
     }
 
