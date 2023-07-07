@@ -6,27 +6,33 @@ from homeassistant.helpers.entity import DeviceInfo, EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import TurkovDeviceUpdateCoordinator
-from .const import DOMAIN
 from .api import TurkovAPI
+from .const import DOMAIN
 
 
 class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
     """Representation of a Turkov entity."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
         turkov_device_coordinator: TurkovDeviceUpdateCoordinator,
         turkov_device_identifier: str,
         description: Optional[EntityDescription] = None,
+        enabled_default: bool = True,
     ) -> None:
         """Initialize the entity."""
         super().__init__(turkov_device_coordinator)
 
+        self._attr_entity_registry_enabled_default = enabled_default
         self._turkov_device_identifier = turkov_device_identifier
 
         if description is not None:
             self.entity_description = description
-            self._attr_unique_id = f"{turkov_device_identifier}_{description.key}"
+            self._attr_unique_id = (
+                f"{turkov_device_identifier}_{description.key}"
+            )
         else:
             self._attr_unique_id = turkov_device_identifier
 
@@ -36,20 +42,13 @@ class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
     def device_name(self) -> str:
         turkov_device = self.coordinator.turkov_device
         return (
-            turkov_device.name or turkov_device.type or self._turkov_device_identifier
+            turkov_device.name
+            or turkov_device.type
+            or self._turkov_device_identifier
         )
 
-    @callback
     def _update_attr(self) -> None:
-        """Update the state and attributes."""
-        name = self.device_name
-        if desc := getattr(self, "entity_description", None):
-            name += " " + (desc.name or desc.key.replace("_", " ").title())
-            self._attr_available = (
-                getattr(self.coordinator.turkov_device, desc.key, None) is not None
-            )
-
-        self._attr_name = name
+        """Placeholder for attribute updates"""
 
     @callback
     def _handle_coordinator_update(self) -> None:

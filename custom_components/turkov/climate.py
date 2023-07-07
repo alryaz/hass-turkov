@@ -10,11 +10,11 @@ from homeassistant.components.climate import (
     FAN_HIGH,
     FAN_AUTO,
     FAN_OFF,
+    ClimateEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TurkovDeviceUpdateCoordinator
@@ -23,12 +23,14 @@ from .entity import TurkovEntity
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Turkov climate."""
-    turkov_update_coordinators: Dict[str, TurkovDeviceUpdateCoordinator] = hass.data[
-        DOMAIN
-    ][entry.entry_id]
+    turkov_update_coordinators: Dict[
+        str, TurkovDeviceUpdateCoordinator
+    ] = hass.data[DOMAIN][entry.entry_id]
 
     async_add_entities(
         [
@@ -48,6 +50,14 @@ async def async_setup_entry(
 class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     """BAF climate auto comfort."""
 
+    entity_description = ClimateEntityDescription(
+        key="climate",
+        name=None,
+        has_entity_name=True,
+        translation_key="climate",
+    )
+
+    _attr_supported_features = ClimateEntityFeature.FAN_MODE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1.0
     _attr_min_temp = 5
@@ -144,7 +154,9 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         if (fan_speed := device.fan_speed) == "auto":
             self._attr_fan_mode = FAN_AUTO
         elif fan_speed in ("1", "2", "3"):
-            self._attr_fan_mode = (FAN_LOW, FAN_MEDIUM, FAN_HIGH)[int(fan_speed) - 1]
+            self._attr_fan_mode = (FAN_LOW, FAN_MEDIUM, FAN_HIGH)[
+                int(fan_speed) - 1
+            ]
         else:
             self._attr_fan_mode = FAN_OFF
 
@@ -152,7 +164,9 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     def _update_attr_picture(self) -> None:
         """Update entity picture."""
         device = self.coordinator.turkov_device
-        self._attr_entity_picture = device.image_url or self._attr_entity_picture
+        self._attr_entity_picture = (
+            device.image_url or self._attr_entity_picture
+        )
 
     @callback
     def _update_attr(self) -> None:
@@ -225,7 +239,9 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
                 else:
                     raise ValueError("unsupported HVAC mode")
                 # Send target temperature because turn off resets heater
-                await device.set_target_temperature(self._attr_target_temperature)
+                await device.set_target_temperature(
+                    self._attr_target_temperature
+                )
 
         # Refresh call
         await coordinator.async_refresh()

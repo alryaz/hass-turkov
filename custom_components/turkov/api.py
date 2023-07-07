@@ -86,7 +86,9 @@ class TurkovAPI:
 
             # Handle authentication (if enabled)
             if handle_authentication and self.access_token_needs_update:
-                _LOGGER.debug(f"[{self}] Access token requires update before request")
+                _LOGGER.debug(
+                    f"[{self}] Access token requires update before request"
+                )
                 await self.authenticate()
                 authentication_attempted = True
 
@@ -223,7 +225,9 @@ class TurkovAPI:
         if not (user_email and password):
             raise ValueError("email and/or password empty")
 
-        _LOGGER.info(f"[{self}] Preparing to authenticate with email/password combo")
+        _LOGGER.info(
+            f"[{self}] Preparing to authenticate with email/password combo"
+        )
         async with self._session.post(
             self.BASE_URL + "/user/signin",
             json={
@@ -256,9 +260,13 @@ class TurkovAPI:
             async with request as response:
                 data = await response.json()
         except (ContentTypeError, JSONDecodeError) as exc:
-            raise TurkovAPIAuthenticationError("Server returned bad response") from exc
+            raise TurkovAPIAuthenticationError(
+                "Server returned bad response"
+            ) from exc
         except (aiohttp.ClientError, TimeoutError) as exc:
-            raise TurkovAPIAuthenticationError("Server did not respond") from exc
+            raise TurkovAPIAuthenticationError(
+                "Server did not respond"
+            ) from exc
 
         _LOGGER.debug(f"[{self}] Authentication response data: {data}")
 
@@ -276,15 +284,23 @@ class TurkovAPI:
                 f"Server did not provide auth data {exc}: {data.get('message') or '<no message>'}"
             ) from exc
         except (ValueError, TypeError) as exc:
-            raise TurkovAPIAuthenticationError(f"Server provided bad data: {exc}")
+            raise TurkovAPIAuthenticationError(
+                f"Server provided bad data: {exc}"
+            )
 
         # Some data validation
         if not (access_token or refresh_token):
-            raise TurkovAPIAuthenticationError(f"Server provided empty auth data")
+            raise TurkovAPIAuthenticationError(
+                f"Server provided empty auth data"
+            )
         if access_token_expires_at < current_timestamp:
-            raise TurkovAPIAuthenticationError(f"Server provided expired access token")
+            raise TurkovAPIAuthenticationError(
+                f"Server provided expired access token"
+            )
         if refresh_token_expires_at < current_timestamp:
-            raise TurkovAPIAuthenticationError(f"Server provided expired refresh token")
+            raise TurkovAPIAuthenticationError(
+                f"Server provided expired refresh token"
+            )
 
         _LOGGER.info(f"[{self}] Successful authentication, updating data")
 
@@ -345,7 +361,9 @@ class TurkovAPI:
 
     @_handle_preliminary_auth
     async def update_user_data(self, force: bool = False) -> None:
-        _LOGGER.debug(f"[{self}] Updating user information and list of devices")
+        _LOGGER.debug(
+            f"[{self}] Updating user information and list of devices"
+        )
         request_tag = "user_data"
 
         async with (
@@ -495,8 +513,12 @@ class TurkovAPI:
         return device_data
 
     @_handle_preliminary_auth
-    async def set_device_value(self, device_id: str, key: str, value: Any) -> None:
-        _LOGGER.debug(f"[{self}] Sending `{key}`=`{value}` to device {device_id}")
+    async def set_device_value(
+        self, device_id: str, key: str, value: Any
+    ) -> None:
+        _LOGGER.debug(
+            f"[{self}] Sending `{key}`=`{value}` to device {device_id}"
+        )
 
         async with (
             await self.prepare_authenticated_request(
@@ -603,7 +625,9 @@ class TurkovDevice:
         if api and not id:
             raise ValueError("id cannot be empty with api")
         if not (api or session):
-            raise ValueError("object must be provided with at least api or session")
+            raise ValueError(
+                "object must be provided with at least api or session"
+            )
 
         # Required attributes
         self._api = api
@@ -686,7 +710,9 @@ class TurkovDevice:
             _LOGGER.debug(f"[{self}] Received local state data: {data}")
             return data
 
-    async def get_state(self, *, force: bool = True) -> Optional[Dict[str, Any]]:
+    async def get_state(
+        self, *, force: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """
         Get device state attributes.
         :param force: Bypass request caching (on by default)
