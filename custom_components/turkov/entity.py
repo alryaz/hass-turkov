@@ -1,4 +1,5 @@
 """Entity for the Turkov component."""
+from dataclasses import dataclass
 from typing import Optional
 
 from homeassistant.core import callback
@@ -10,8 +11,14 @@ from .api import TurkovAPI
 from .const import DOMAIN
 
 
+@dataclass
 class TurkovEntityDescription(EntityDescription):
     """Base class for Turkov entity descriptions."""
+
+    def __post_init__(self) -> None:
+        """Set default translation key."""
+        if not self.translation_key:
+            self.translation_key = self.key
 
 
 class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
