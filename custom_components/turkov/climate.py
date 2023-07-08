@@ -1,5 +1,6 @@
 """Support for Turkov climate."""
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any, Dict, Final
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -21,6 +22,17 @@ from . import TurkovDeviceUpdateCoordinator
 from .const import DOMAIN
 from .entity import TurkovEntity
 
+@dataclass
+class TurkovClimateEntityDescription(
+    TurkovEntityDescription, ClimateEntityDescription
+):
+    """Base class for Turkov climate entity description"""
+
+CLIMATE_TYPE: Final = TurkovClimateEntityDescription(
+    key="climate",
+    name=None,
+    has_entity_name=True,
+)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -37,6 +49,7 @@ async def async_setup_entry(
             TurkovClimateEntity(
                 turkov_device_coordinator=turkov_device_coordinator,
                 turkov_device_identifier=turkov_device_identifier,
+                entity_description=CLIMATE_TYPE,
             )
             for (
                 turkov_device_identifier,
@@ -47,15 +60,12 @@ async def async_setup_entry(
     )
 
 
+@dataclass
+
 class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     """BAF climate auto comfort."""
 
-    entity_description = ClimateEntityDescription(
-        key="climate",
-        name=None,
-        has_entity_name=True,
-        translation_key="climate",
-    )
+    entity_description: TurkovClimateEntityDescription
 
     _attr_supported_features = ClimateEntityFeature.FAN_MODE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
