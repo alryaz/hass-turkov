@@ -5,6 +5,7 @@ from typing import Optional
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo, EntityDescription
 from homeassistant.helpers.entity_platform import async_get_current_platform
+from homeassistant.helpers.typing import UNDEFINED
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import TurkovDeviceUpdateCoordinator
@@ -72,7 +73,7 @@ class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
         if source := self.entity_description.name_source:
             self._attr_name = (
                 getattr(self.coordinator.turkov_device, source, None)
-                or self.entity_description.name
+                or UNDEFINED
             )
 
     @callback
