@@ -69,7 +69,7 @@
   "entity": {
     "sensor": {
       "filter_life_percentage": {
-        "name": "Оставшийся ресурс фильтра"
+        "name": "Использованный ресурс фильтра"
       },
       "outdoor_temperature": {
         "name": "Уличная температура"
