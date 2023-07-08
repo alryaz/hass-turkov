@@ -1,8 +1,10 @@
 """Entity for the Turkov component."""
+from dataclasses import dataclass
 from typing import Optional
 
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo, EntityDescription
+from homeassistant.helpers.entity_platform import async_get_current_platform
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import TurkovDeviceUpdateCoordinator
@@ -10,32 +12,44 @@ from .api import TurkovAPI
 from .const import DOMAIN
 
 
+@dataclass
+class TurkovEntityDescription(EntityDescription):
+    """Base class for Turkov entity descriptions."""
+
+    def __post_init__(self) -> None:
+        """Set default translation key."""
+        if not self.translation_key:
+            self.translation_key = self.key
+
+
 class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
     """Representation of a Turkov entity."""
 
-    _attr_has_entity_name = True
+    entity_description: Optional[TurkovEntityDescription]
 
     def __init__(
         self,
         turkov_device_coordinator: TurkovDeviceUpdateCoordinator,
         turkov_device_identifier: str,
-        description: Optional[EntityDescription] = None,
+        description: Optional[TurkovEntityDescription] = None,
         enabled_default: bool = True,
     ) -> None:
         """Initialize the entity."""
         super().__init__(turkov_device_coordinator)
 
-        self._attr_entity_registry_enabled_default = enabled_default
         self._turkov_device_identifier = turkov_device_identifier
+        
+        self.entity_description = description
+        self._attr_entity_registry_enabled_default = enabled_default
 
+        unique_id_parts = [
+            async_get_current_platform().domain,
+            turkov_device_identifier,
+        ]
         if description is not None:
-            self.entity_description = description
-            self._attr_unique_id = (
-                f"{turkov_device_identifier}_{description.key}"
-            )
-        else:
-            self._attr_unique_id = turkov_device_identifier
+            unique_id_parts.append(description.key)
 
+        self._attr_unique_id = "__".join(unique_id_parts)
         self._update_attr()
 
     @property

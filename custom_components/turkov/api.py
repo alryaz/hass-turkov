@@ -434,11 +434,16 @@ class TurkovAPI:
             else:
                 leftover_devices.discard(id_)
 
-            device.type = device_data["deviceType"]
-            device.name = device_data["deviceName"]
-            device.serial_number = device_data["serialNumber"]
-            device.pin = device_data["pin"]
-            device.firmware_version = device_data["firmVer"]
+            if "deviceType" in device_data:
+                device.type = device_data["deviceType"]
+            if "deviceName" in device_data:
+                device.name = device_data["deviceName"]
+            if "serialNumber" in device_data:
+                device.serial_number = device_data["serialNumber"]
+            if "pin" in device_data:
+                device.pin = device_data["pin"]
+            if "firmVer" in device_data:
+                device.firmware_version = device_data["firmVer"]
 
         if response_tag:
             self._request_history[request_tag] = response_tag
@@ -580,6 +585,8 @@ class TurkovDevice:
         "current_temperature": ("temp_curr", _float_less),
         "current_humidity": ("hum_curr", _float_less),
         "target_humidity": ("hum_sp", int),
+        "fireplace": ("firep", bool),
+        "humidifier": ("humib", bool),
     }
 
     def __str__(self) -> str:
@@ -662,6 +669,8 @@ class TurkovDevice:
         self.current_temperature: Optional[float] = None
         self.current_humidity: Optional[float] = None
         self.target_humidity: Optional[float] = None
+        self.fireplace: Optional[bool] = None
+        self.humidifier: Optional[bool] = None
 
     @property
     def id(self) -> Optional[str]:
@@ -926,3 +935,25 @@ class TurkovDevice:
             raise TurkovAPIValueError("target humidity out of bounds")
 
         await self.set_value("hum_sp", target_humidity)
+
+    async def toggle_fireplace(self, enable: Optional[bool] = None) -> None:
+        if enable is None:
+            enable = self.fireplace
+        await self.set_value("firep", bool(enable))
+
+    async def turn_on_fireplace(self) -> None:
+        await self.toggle_fireplace(True)
+
+    async def turn_off_fireplace(self) -> None:
+        await self.toggle_fireplace(False)
+
+    async def toggle_humidifier(self, enable: Optional[bool] = None) -> None:
+        if enable is None:
+            enable = self.humidifier
+        await self.set_value("humib", bool(enable))
+
+    async def turn_on_humidifier(self) -> None:
+        await self.toggle_humidifier(True)
+
+    async def turn_off_humidifier(self) -> None:
+        await self.toggle_humidifier(False)

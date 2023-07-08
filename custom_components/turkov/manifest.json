@@ -8,5 +8,5 @@
   "issue_tracker": "https://github.com/alryaz/hass-turkov/issues",
   "loggers": ["turkov"],
   "requirements": [],
-  "version": "2023.7.1"
+  "version": "2023.7.3"
 }

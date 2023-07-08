@@ -19,39 +19,38 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TurkovDeviceUpdateCoordinator
 from .const import DOMAIN, CONF_ENABLE_ALL_ENTITIES
-from .entity import TurkovEntity
+from .entity import TurkovEntity, TurkovEntityDescription
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
-    SensorEntityDescription(
+@dataclass
+class TurkovSensorEntityDescription(TurkovEntityDescription, SensorEntityDescription):
+    """Base class for Turkov sensors."""
+
+
+SENSOR_TYPES: tuple[TurkovSensorEntityDescription, ...] = (
+    TurkovSensorEntityDescription(
         key="outdoor_temperature",
         name="Outdoor Temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
-        has_entity_name=True,
-        translation_key="outdoor_temperature",
     ),
-    SensorEntityDescription(
+    TurkovSensorEntityDescription(
         key="filter_life_percentage",
-        name="Filter Life Percentage",
+        name="Filter Used Percentage",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         icon="mdi:air-filter",
-        has_entity_name=True,
-        translation_key="filter_life_percentage",
     ),
-    SensorEntityDescription(
+    TurkovSensorEntityDescription(
         key="air_pressure",
         name="Air Pressure",
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.PA,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
-        has_entity_name=True,
-        translation_key="air_pressure",
     ),
 )
 
@@ -102,9 +101,7 @@ async def async_setup_entry(
 class TurkovSensor(TurkovEntity, SensorEntity):
     """Representation of a Turkov sensor."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._attr_unique_id = "sensor__" + self._attr_unique_id
+    entity_description: TurkovSensorEntityDescription
 
     @callback
     def _update_attr(self) -> None:
