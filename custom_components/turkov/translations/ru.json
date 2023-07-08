@@ -77,6 +77,20 @@
       "air_pressure": {
         "name": "Атмосферное давление"
       }
+    },
+    "switch": {
+      "first_relay": {
+        "name": "Первое реле"
+      },
+      "second_relay": {
+        "name": "Второе реле"
+      },
+      "fireplace": {
+        "name": "Камин"
+      },
+      "humidifier": {
+        "name": "Увлажнитель"
+      }
     }
   }
 }

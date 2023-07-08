@@ -37,7 +37,7 @@ class TurkovSwitchEntityDescription(
 ENTITY_TYPES: tuple[TurkovSwitchEntityDescription, ...] = (
     TurkovSwitchEntityDescription(
         key="first_relay",
-        name="Relay 1",
+        name="First Relay",
         name_source="first_relay_name",
         icon="mdi:electric-switch",
         icon_on="mdi:electric-switch-closed",
@@ -46,7 +46,7 @@ ENTITY_TYPES: tuple[TurkovSwitchEntityDescription, ...] = (
     ),
     TurkovSwitchEntityDescription(
         key="second_relay",
-        name="Relay 2",
+        name="Second Relay",
         name_source="second_relay_name",
         icon="mdi:electric-switch",
         icon_on="mdi:electric-switch-closed",
@@ -90,9 +90,15 @@ class TurkovSwitch(TurkovEntity, SwitchEntity):
         if state is None:
             self._attr_assumed_state = True
             self._attr_is_on = None
+            self._attr_icon = self.entity_description.icon
         else:
             self._attr_assumed_state = False
             self._attr_is_on = bool(state)
+            self._attr_icon = (
+                self.entity_description.icon_on
+                if self._attr_is_on
+                else self.entity_description.icon
+            )
 
     async def async_turn_on(self, **kwargs) -> None:
         """Proxy method to run enable boolean command."""
