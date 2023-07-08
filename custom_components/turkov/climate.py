@@ -73,10 +73,6 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     _attr_min_temp = 5
     _attr_max_temp = 40
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._attr_unique_id = "climate__" + self._attr_unique_id
-
     @callback
     def _update_attr_supported_features(self) -> None:
         """Calculate and update available features."""
