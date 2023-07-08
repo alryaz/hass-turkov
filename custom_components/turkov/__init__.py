@@ -3,7 +3,7 @@ import asyncio
 import logging
 from copy import deepcopy
 from datetime import timedelta
-from typing import Set, Dict, Any
+from typing import Set, Dict, Any, Final
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -35,10 +35,10 @@ from .helpers import (
     async_get_updated_api,
 )
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER: Final = logging.getLogger(__name__)
 
 # PLATFORMS = (Platform.BINARY_SENSOR, Platform.SENSOR)
-PLATFORMS = (Platform.SENSOR, Platform.CLIMATE)
+PLATFORMS = (Platform.SENSOR, Platform.CLIMATE, Platform.SWITCH)
 
 
 async def async_setup_email_entry(
