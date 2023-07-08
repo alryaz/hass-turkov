@@ -4,6 +4,7 @@ from typing import Optional
 
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo, EntityDescription
+from homeassistant.helpers.entity_platform import async_get_current_platform
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import TurkovDeviceUpdateCoordinator
@@ -40,10 +41,15 @@ class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
         
         self.entity_description = description
         self._attr_entity_registry_enabled_default = enabled_default
-        self._attr_unique_id = turkov_device_identifier
-        if description is not None:
-            self._attr_unique_id += description.key
 
+        unique_id_parts = [
+            async_get_current_platform().domain,
+            turkov_device_identifier,
+        ]
+        if description is not None:
+            unique_id_parts.append(description.key)
+
+        self._attr_unique_id = "__".join(unique_id_parts)
         self._update_attr()
 
     @property
