@@ -6,11 +6,11 @@ from json import dumps
 from typing import Any, Optional, Final
 
 import aiohttp
-from homeassistant import config_entries
 from homeassistant.config_entries import (
     ConfigEntry,
     OptionsFlow,
     OptionsFlowWithConfigEntry,
+    ConfigFlow,
 )
 from homeassistant.const import (
     CONF_EMAIL,
@@ -25,25 +25,28 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import (
     async_get_updated_api,
-    STEP_EMAIL_DATA_SCHEMA,
-    STEP_HOST_OPTIONS_SCHEMA,
-    STEP_HOST_DATA_SCHEMA,
-    STEP_EMAIL_OPTIONS_SCHEMA,
+    HOST_OPTIONS_SCHEMA,
+    HOST_DATA_SCHEMA,
+    CLOUD_OPTIONS_SCHEMA,
 )
 from .api import TurkovAPIAuthenticationError, TurkovDevice, TurkovAPIError
 from .const import DOMAIN
+from .helpers import (
+    STEP_CLOUD_DATA_SCHEMA,
+    STEP_CLOUD_HOST_OPTIONS_SCHEMA,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class TurkovConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Turkov."""
 
-    VERSION = 2
+    VERSION = 4
 
     def __init__(self) -> None:
         self._devices: Optional[dict[str, TurkovDevice]] = None
-        self._current_serial_number: Optional[str] = None
+        self._current_id: Optional[str] = None
         self._reauth_entry: Optional[ConfigEntry] = None
 
         self.data: dict[str, Any] = {}
@@ -114,9 +117,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_commit_cloud_entry()
 
                 self._devices = {
-                    device.serial_number: device
+                    device.id: device
                     for device in turkov_api.devices.values()
-                    if device.serial_number
+                    if device.id
                 }
                 return await self.async_step_cloud_host()
 
@@ -127,7 +130,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="email",
             data_schema=self.add_suggested_values_to_schema(
-                STEP_EMAIL_DATA_SCHEMA, user_input
+                STEP_CLOUD_DATA_SCHEMA, user_input
             ),
             errors=errors,
         )
@@ -138,49 +141,51 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle local control setup for E-mail configurations."""
         errors = {}
 
-        current_serial_number: Optional[str] = self._current_serial_number
-        if user_input is None or not current_serial_number:
+        current_id: Optional[str] = self._current_id
+        if user_input is None or not current_id:
             try:
-                current_serial_number = next(iter(self._devices))
+                current_id = next(iter(self._devices))
             except (AttributeError, StopIteration):
                 # Check for both _devices being None or empty
                 pass
 
         else:
-            device_hosts: dict[str, str] = self.data.setdefault(CONF_HOSTS, {})
+            device_hosts: dict[str, dict[str, Any]] = self.data.setdefault(
+                CONF_HOSTS, {}
+            )
 
-            current_device = self._devices[current_serial_number]
+            current_device = self._devices[current_id]
             try:
                 if host := user_input.get(CONF_HOST):
                     current_device.host = host
                     await current_device.get_state_local()
-                    device_hosts[current_serial_number] = host
+                    device_hosts[current_device.id] = {CONF_HOST: host}
                 else:
-                    del self._devices[current_serial_number]
+                    del self._devices[current_id]
             except TurkovAPIError:
                 current_device.host = None
                 errors["base"] = "cannot_connect"
             else:
-                self._current_serial_number = (current_serial_number := None)
+                self._current_id = (current_id := None)
                 for serial_number in self._devices:
                     if serial_number not in device_hosts:
-                        current_serial_number = serial_number
+                        current_id = serial_number
                         break
 
-        if current_serial_number is None:
+        if current_id is None:
             return await self.async_commit_cloud_entry()
 
-        current_device = self._devices[current_serial_number]
-        self._current_serial_number = current_serial_number
+        current_device = self._devices[current_id]
+        self._current_id = current_id
         return self.async_show_form(
             step_id="cloud_host",
             errors=errors,
             data_schema=self.add_suggested_values_to_schema(
-                STEP_HOST_OPTIONS_SCHEMA,
+                STEP_CLOUD_HOST_OPTIONS_SCHEMA,
                 user_input,
             ),
             description_placeholders={
-                "device__serial_number": current_serial_number,
+                "device__serial": current_device.serial_number or "<...>",
                 "device__name": current_device.name or "<...>",
                 "device__type": current_device.type or "<...>",
             },
@@ -189,38 +194,34 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_host(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        if user_input is None:
-            return self.async_show_form(
-                step_id="host", data_schema=STEP_HOST_DATA_SCHEMA
-            )
-
         errors = {}
 
-        device = TurkovDevice(
-            host=(host := user_input[CONF_HOST]),
-            session=async_get_clientsession(self.hass),
-        )
-
-        try:
-            await device.get_state()
-        except (TurkovAPIError, aiohttp.ClientError) as exc:
-            _LOGGER.error(f"Connection error: {exc}", exc_info=exc)
-            errors["base"] = "cannot_connect"
-        else:
-            await self.async_set_unique_id(f"device__{host}")
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=host,
-                data={CONF_HOST: host},
+        if user_input is not None:
+            device = TurkovDevice(
+                host=(host := user_input[CONF_HOST]),
+                session=async_get_clientsession(self.hass),
             )
+
+            try:
+                await device.get_state()
+            except (TurkovAPIError, aiohttp.ClientError) as exc:
+                _LOGGER.error(f"Connection error: {exc}", exc_info=exc)
+                errors["base"] = "cannot_connect"
+            else:
+                await self.async_set_unique_id(f"device__{host}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=host,
+                    data={CONF_HOST: host},
+                )
 
         return self.async_show_form(
             step_id="host",
             errors=errors,
             data_schema=self.add_suggested_values_to_schema(
-                STEP_HOST_DATA_SCHEMA,
-                {CONF_HOST: host},
+                HOST_DATA_SCHEMA,
+                user_input,
             ),
         )
 
@@ -250,7 +251,7 @@ STEP_SAVE: Final = "save"
 class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._current_serial: Optional[str] = None
+        self._current_id: Optional[str] = None
         self._devices: Optional[dict[str, TurkovDevice]] = None
         self.initial_options = deepcopy(dict(self.config_entry.options))
 
@@ -281,12 +282,12 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
         if user_input is None:
             user_input = self.options
         else:
-            self.options.update(STEP_EMAIL_OPTIONS_SCHEMA(user_input))
+            self.options.update(CLOUD_OPTIONS_SCHEMA(user_input))
             return await self.async_step_init()
         return self.async_show_form(
             step_id=STEP_EMAIL,
             data_schema=self.add_suggested_values_to_schema(
-                STEP_EMAIL_OPTIONS_SCHEMA, user_input
+                CLOUD_OPTIONS_SCHEMA, user_input
             ),
         )
 
@@ -301,23 +302,23 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
                 self.hass, self.config_entry
             )
             self._devices = {
-                device.serial_number: device
+                device.id: device
                 for device in turkov_api.devices.values()
-                if device.serial_number
+                if device.id
             }
 
-        for serial in sorted({*hosts, *self._devices}):
-            local_ip = hosts.get(serial, {}).get(CONF_HOST)
-            name = f"S/N: {serial}"
+        for identifier in sorted({*hosts, *self._devices}):
+            local_ip = hosts.get(identifier, {}).get(CONF_HOST)
+            name = f"ID: {identifier[-8:]}"
             try:
-                device = self._devices[serial]
+                device = self._devices[identifier]
             except KeyError:
                 pass
             else:
                 name = device.name or device.type or name
             if local_ip:
                 name += f" ({local_ip})"
-            menu_options[f"host_{serial}"] = name
+            menu_options[f"host_{identifier}"] = name
 
         if not menu_options:
             self.async_abort("empty_hosts")
@@ -329,10 +330,10 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
     ) -> FlowResult:
         if is_local := (CONF_HOST in self.config_entry.data):
             current_host = self.config_entry.data
-            schema = STEP_HOST_DATA_SCHEMA
-        elif current_serial := self._current_serial:
-            current_host = self.options.get(CONF_HOSTS, {}).get(current_serial)
-            schema = STEP_HOST_OPTIONS_SCHEMA
+            schema = HOST_DATA_SCHEMA
+        elif current_id := self._current_id:
+            current_host = self.options.get(CONF_HOSTS, {}).get(current_id)
+            schema = HOST_OPTIONS_SCHEMA
         else:
             return self.async_abort(reason="unknown_error")
 
@@ -343,9 +344,7 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
         elif is_local:
             return self.async_create_entry(data=user_input)
         else:
-            self.options.setdefault(CONF_HOSTS, {})[
-                current_serial
-            ] = user_input
+            self.options.setdefault(CONF_HOSTS, {})[current_id] = user_input
             return await self.async_step_init()
 
         return self.async_show_form(
@@ -360,6 +359,6 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
         if isinstance(attribute, str) and attribute.startswith(
             f"async_step_{STEP_HOST}_"
         ):
-            self._current_serial = attribute[16:]
+            self._current_id = attribute[16:]
             return self.async_step_host
         raise AttributeError

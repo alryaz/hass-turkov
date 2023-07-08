@@ -1,6 +1,8 @@
 """Platform for the Turkov sensor component."""
 
 import logging
+from dataclasses import dataclass
+from functools import partial
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -8,27 +10,27 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfTemperature,
     UnitOfPressure,
 )
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.core import callback
 
-from . import TurkovDeviceUpdateCoordinator
-from .const import DOMAIN, CONF_ENABLE_ALL_ENTITIES
 from .entity import TurkovEntity, TurkovEntityDescription
+from .helpers import async_setup_entry_for_platform
 
 _LOGGER = logging.getLogger(__name__)
 
+
 @dataclass
-class TurkovSensorEntityDescription(TurkovEntityDescription, SensorEntityDescription):
+class TurkovSensorEntityDescription(
+    TurkovEntityDescription, SensorEntityDescription
+):
     """Base class for Turkov sensors."""
 
 
-SENSOR_TYPES: tuple[TurkovSensorEntityDescription, ...] = (
+ENTITY_TYPES: tuple[TurkovSensorEntityDescription, ...] = (
     TurkovSensorEntityDescription(
         key="outdoor_temperature",
         name="Outdoor Temperature",
@@ -55,49 +57,6 @@ SENSOR_TYPES: tuple[TurkovSensorEntityDescription, ...] = (
 )
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Turkov sensors."""
-    turkov_update_coordinators: dict[
-        str, TurkovDeviceUpdateCoordinator
-    ] = hass.data[DOMAIN][entry.entry_id]
-
-    add_entities = []
-    for (
-        identifier,
-        coordinator,
-    ) in turkov_update_coordinators.items():
-        add_keys = set(coordinator.turkov_device.ATTRIBUTE_KEY_MAPPING.keys())
-        _LOGGER.debug(f"{identifier} host config {coordinator.host_config}")
-        add_all_entities = coordinator.host_config[CONF_ENABLE_ALL_ENTITIES]
-
-        for description in SENSOR_TYPES:
-            add_entity = (
-                description.key in add_keys
-                and getattr(
-                    coordinator.turkov_device,
-                    description.key,
-                    None,
-                )
-                is not None
-            )
-            if not (add_entity or add_all_entities):
-                continue
-            add_entities.append(
-                TurkovSensor(
-                    turkov_device_coordinator=coordinator,
-                    turkov_device_identifier=identifier,
-                    description=description,
-                    enabled_default=add_entity,
-                )
-            )
-
-    async_add_entities(add_entities, update_before_add=False)
-
-
 class TurkovSensor(TurkovEntity, SensorEntity):
     """Representation of a Turkov sensor."""
 
@@ -111,3 +70,8 @@ class TurkovSensor(TurkovEntity, SensorEntity):
             self._attr_native_value = getattr(
                 self.coordinator.turkov_device, self.entity_description.key
             )
+
+
+async_setup_entry = partial(
+    async_setup_entry_for_platform, _LOGGER, ENTITY_TYPES, TurkovSensor
+)

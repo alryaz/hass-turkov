@@ -587,6 +587,10 @@ class TurkovDevice:
         "target_humidity": ("hum_sp", int),
         "fireplace": ("firep", bool),
         "humidifier": ("humib", bool),
+        "first_relay": ("relay_1", bool),
+        "first_relay_name": ("relay_1_name", str),
+        "second_relay": ("relay_2", bool),
+        "second_relay_name": ("relay_2_name", str),
     }
 
     def __str__(self) -> str:
@@ -671,6 +675,10 @@ class TurkovDevice:
         self.target_humidity: Optional[float] = None
         self.fireplace: Optional[bool] = None
         self.humidifier: Optional[bool] = None
+        self.first_relay: Optional[bool] = None
+        self.first_relay_name: Optional[str] = None
+        self.second_relay: Optional[bool] = None
+        self.second_relay_name: Optional[str] = None
 
     @property
     def id(self) -> Optional[str]:
@@ -939,7 +947,8 @@ class TurkovDevice:
     async def toggle_fireplace(self, enable: Optional[bool] = None) -> None:
         if enable is None:
             enable = self.fireplace
-        await self.set_value("firep", bool(enable))
+        await self.set_value("firep", cmd := bool(enable))
+        # self.fireplace = cmd
 
     async def turn_on_fireplace(self) -> None:
         await self.toggle_fireplace(True)
@@ -950,10 +959,43 @@ class TurkovDevice:
     async def toggle_humidifier(self, enable: Optional[bool] = None) -> None:
         if enable is None:
             enable = self.humidifier
-        await self.set_value("humib", bool(enable))
+        await self.set_value("humib", cmd := bool(enable))
+        # self.humidifier = cmd
 
     async def turn_on_humidifier(self) -> None:
         await self.toggle_humidifier(True)
 
     async def turn_off_humidifier(self) -> None:
         await self.toggle_humidifier(False)
+
+    async def toggle_first_relay(self, enable: Optional[bool] = None) -> None:
+        if enable is None:
+            enable = self.first_relay
+        await self.set_value("relay_1", cmd := bool(enable))
+        # self.first_relay = cmd
+
+    async def turn_on_first_relay(self) -> None:
+        await self.toggle_first_relay(True)
+
+    async def turn_off_first_relay(self) -> None:
+        await self.toggle_first_relay(False)
+
+    async def set_first_relay_name(self, name: str) -> None:
+        await self.set_value("relay_1_name", name)
+        # self.first_relay_name = name
+
+    async def toggle_second_relay(self, enable: Optional[bool] = None) -> None:
+        if enable is None:
+            enable = self.second_relay
+        await self.set_value("relay_2", cmd := bool(enable))
+        # self.second_relay = cmd
+
+    async def turn_on_second_relay(self) -> None:
+        await self.toggle_second_relay(True)
+
+    async def turn_off_second_relay(self) -> None:
+        await self.toggle_second_relay(False)
+
+    async def set_second_relay_name(self, name: str) -> None:
+        await self.set_value("relay_2_name", name)
+        # self.second_relay_name = name

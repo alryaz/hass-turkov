@@ -20,7 +20,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TurkovDeviceUpdateCoordinator
 from .const import DOMAIN
-from .entity import TurkovEntity
+from .entity import TurkovEntity, TurkovEntityDescription
+
 
 @dataclass
 class TurkovClimateEntityDescription(
@@ -28,11 +29,13 @@ class TurkovClimateEntityDescription(
 ):
     """Base class for Turkov climate entity description"""
 
+
 CLIMATE_TYPE: Final = TurkovClimateEntityDescription(
     key="climate",
     name=None,
     has_entity_name=True,
 )
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -59,8 +62,6 @@ async def async_setup_entry(
         False,
     )
 
-
-@dataclass
 
 class TurkovClimateEntity(TurkovEntity, ClimateEntity):
     """BAF climate auto comfort."""

@@ -3,15 +3,12 @@ import asyncio
 import logging
 from copy import deepcopy
 from datetime import timedelta
-from typing import Set, Dict, Mapping, Any, Final
+from typing import Set, Dict, Any
 
 import aiohttp
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_EMAIL,
-    CONF_PASSWORD,
-    CONF_VERIFY_SSL,
     CONF_ACCESS_TOKEN,
     Platform,
     CONF_HOST,
@@ -19,7 +16,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import update_coordinator, config_validation as cv
+from homeassistant.helpers import update_coordinator
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -31,64 +28,17 @@ from .const import (
     CONF_REFRESH_TOKEN_EXPIRES_AT,
     CONF_ENABLE_ALL_ENTITIES,
 )
+from .helpers import (
+    HOST_OPTIONS_SCHEMA,
+    CLOUD_OPTIONS_SCHEMA,
+    HOST_DATA_SCHEMA,
+    async_get_updated_api,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 # PLATFORMS = (Platform.BINARY_SENSOR, Platform.SENSOR)
 PLATFORMS = (Platform.SENSOR, Platform.CLIMATE)
-
-STEP_EMAIL_OPTIONS_SCHEMA: Final = vol.Schema(
-    {
-        vol.Optional(CONF_VERIFY_SSL, default=True): cv.boolean,
-    },
-    extra=vol.ALLOW_EXTRA,
-)
-"""Schema used within cloud configuration and in options"""
-
-STEP_EMAIL_DATA_SCHEMA: Final = vol.Schema(
-    {
-        vol.Required(CONF_EMAIL): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
-    }
-).extend(STEP_EMAIL_OPTIONS_SCHEMA.schema)
-"""Schema used for cloud configuration"""
-
-STEP_HOST_OPTIONS_SCHEMA: Final = vol.Schema(
-    {
-        vol.Optional(CONF_HOST): cv.string,
-        vol.Optional(CONF_ENABLE_ALL_ENTITIES, default=False): cv.boolean,
-    },
-    extra=vol.ALLOW_EXTRA,
-)
-"""Schema used within host configuration and in cloud host options"""
-
-STEP_HOST_DATA_SCHEMA: Final = STEP_HOST_OPTIONS_SCHEMA.extend(
-    {
-        vol.Required(CONF_HOST): cv.string,
-    }
-)
-"""Schema used within direct host configuration and in cloud host options"""
-
-
-async def async_get_updated_api(
-    hass: HomeAssistant, entry: ConfigEntry | Mapping[str, Any]
-) -> TurkovAPI:
-    if isinstance(entry, ConfigEntry):
-        entry = entry.data
-
-    turkov_api = TurkovAPI(
-        async_get_clientsession(hass, entry[CONF_VERIFY_SSL]),
-        entry[CONF_EMAIL],
-        entry[CONF_PASSWORD],
-        access_token=entry.get(CONF_ACCESS_TOKEN),
-        access_token_expires_at=entry.get(CONF_ACCESS_TOKEN_EXPIRES_AT),
-        refresh_token=entry.get(CONF_REFRESH_TOKEN),
-        refresh_token_expires_at=entry.get(CONF_REFRESH_TOKEN_EXPIRES_AT),
-    )
-
-    await turkov_api.update_user_data(True)
-
-    return turkov_api
 
 
 async def async_setup_email_entry(
@@ -114,8 +64,8 @@ async def async_setup_email_entry(
         turkov_device_id,
         turkov_device,
     ) in turkov_api.devices.items():
-        host_config = STEP_HOST_OPTIONS_SCHEMA(
-            hosts.setdefault(turkov_device.serial_number, {})
+        host_config = HOST_OPTIONS_SCHEMA(
+            hosts.setdefault(turkov_device.id, {})
         )
 
         if host := host_config.get(CONF_HOST):
@@ -146,7 +96,7 @@ async def async_setup_host_entry(
         entry.data[CONF_HOST]: TurkovDeviceUpdateCoordinator(
             hass,
             turkov_device=turkov_device,
-            host_config=STEP_HOST_DATA_SCHEMA(
+            host_config=HOST_DATA_SCHEMA(
                 dict(entry.data),
             ),
         )
@@ -207,6 +157,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     args = {"data": new_data, "options": new_options}
 
     if entry.version < 2:
+        # Add ability to set options
         try:
             hosts = new_data.pop(CONF_HOSTS)
         except KeyError:
@@ -215,11 +166,58 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             new_hosts = new_options.setdefault(CONF_HOSTS, {})
             for serial_number, host in hosts.items():
                 new_hosts[serial_number] = {CONF_HOST: host}
+        entry.version = 2
 
+    if entry.version < 3:
+        # Fix missing underscore
+        from homeassistant.helpers.entity_registry import (
+            async_migrate_entries,
+            RegistryEntry,
+        )
+
+        def _migrate_callback(ent: RegistryEntry) -> dict[str, Any] | None:
+            """Add another underscore for entities."""
+            if ent.domain == "sensor":
+                for postfix in (
+                    "air_quality",
+                    "filter_life_percentage",
+                    "outdoor_temperature",
+                ):
+                    if ent.unique_id.endswith(postfix):
+                        return {
+                            "new_unique_id": ent.unique_id[: -len(postfix)]
+                            + "_"
+                            + postfix
+                        }
+            elif ent.domain == "climate":
+                return {"new_unique_id": ent.unique_id + "__climate"}
+            else:
+                return
+
+        await async_migrate_entries(hass, entry.entry_id, _migrate_callback)
+        entry.version = 3
+
+    if entry.version < 4 and (hosts_conf := new_options.get(CONF_HOSTS)):
+        turkov_api = await async_get_updated_api(hass, entry)
+
+        for serial in tuple(hosts_conf):
+            for device in turkov_api.devices.values():
+                if device.serial_number == serial:
+                    _LOGGER.debug(
+                        f"Migrating host keying {serial} to {device.id}"
+                    )
+                    hosts_conf[device.id] = hosts_conf.pop(serial)
+                    break
+            if serial in hosts_conf:
+                _LOGGER.warning(
+                    f"Configuration for device with serial number {serial} lost due to missing device"
+                )
+                del hosts_conf[serial]
+        entry.version = 4
+
+    # Apply on every migration
     args["options"] = (
-        STEP_EMAIL_OPTIONS_SCHEMA
-        if CONF_EMAIL in new_data
-        else STEP_HOST_DATA_SCHEMA
+        CLOUD_OPTIONS_SCHEMA if CONF_EMAIL in new_data else HOST_OPTIONS_SCHEMA
     )(new_options)
 
     hass.config_entries.async_update_entry(entry, **args)

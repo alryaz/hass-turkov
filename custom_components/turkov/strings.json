@@ -27,7 +27,7 @@
         }
       },
       "cloud_host": {
-        "description": "Provide a hostname or IP Address to connect to Turkov {device__type} {device__name} (S/N: `{device__serial_number}`) locally.\n\nTo skip this device, leave the `Host` field blank.",
+        "description": "Provide a hostname or IP Address to connect to Turkov {device__type} {device__name} (S/N: `{device__serial}`) locally.\n\nTo skip this device, leave the `Host` field blank.",
         "data": {
           "host": "Host"
         }
