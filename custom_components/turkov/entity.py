@@ -10,31 +10,32 @@ from .api import TurkovAPI
 from .const import DOMAIN
 
 
+class TurkovEntityDescription(EntityDescription):
+    """Base class for Turkov entity descriptions."""
+
+
 class TurkovEntity(CoordinatorEntity[TurkovDeviceUpdateCoordinator]):
     """Representation of a Turkov entity."""
 
-    _attr_has_entity_name = True
+    entity_description: Optional[TurkovEntityDescription]
 
     def __init__(
         self,
         turkov_device_coordinator: TurkovDeviceUpdateCoordinator,
         turkov_device_identifier: str,
-        description: Optional[EntityDescription] = None,
+        description: Optional[TurkovEntityDescription] = None,
         enabled_default: bool = True,
     ) -> None:
         """Initialize the entity."""
         super().__init__(turkov_device_coordinator)
 
-        self._attr_entity_registry_enabled_default = enabled_default
         self._turkov_device_identifier = turkov_device_identifier
-
+        
+        self.entity_description = description
+        self._attr_entity_registry_enabled_default = enabled_default
+        self._attr_unique_id = turkov_device_identifier
         if description is not None:
-            self.entity_description = description
-            self._attr_unique_id = (
-                f"{turkov_device_identifier}_{description.key}"
-            )
-        else:
-            self._attr_unique_id = turkov_device_identifier
+            self._attr_unique_id += description.key
 
         self._update_attr()
 
