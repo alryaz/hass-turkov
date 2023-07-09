@@ -150,7 +150,7 @@ class TurkovConfigFlow(ConfigFlow, domain=DOMAIN):
                 pass
 
         else:
-            device_hosts: dict[str, dict[str, Any]] = self.data.setdefault(
+            device_hosts: dict[str, dict[str, Any]] = self.options.setdefault(
                 CONF_HOSTS, {}
             )
 
@@ -213,7 +213,8 @@ class TurkovConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 return self.async_create_entry(
                     title=host,
-                    data={CONF_HOST: host},
+                    data={CONF_HOST: user_input.pop(CONF_HOST)},
+                    options=user_input,
                 )
 
         return self.async_show_form(
