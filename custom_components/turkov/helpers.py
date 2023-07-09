@@ -43,6 +43,7 @@ HOST_OPTIONS_SCHEMA: Final = vol.Schema(
     {
         vol.Optional(CONF_ENABLE_ALL_ENTITIES, default=False): cv.boolean,
     },
+    extra=vol.ALLOW_EXTRA,
 )
 """Schema for local entry options setup"""
 
@@ -68,7 +69,8 @@ CLOUD_OPTIONS_SCHEMA: Final = STEP_CLOUD_OPTIONS_SCHEMA.extend(
         vol.Optional(CONF_HOSTS, default=dict): {
             cv.string: HOST_OPTIONS_SCHEMA
         },
-    }
+    },
+    extra=vol.ALLOW_EXTRA,
 )
 """Schema for cloud entry options setup"""
 
