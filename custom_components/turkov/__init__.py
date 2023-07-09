@@ -197,22 +197,23 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_migrate_entries(hass, entry.entry_id, _migrate_callback)
         entry.version = 3
 
-    if entry.version < 4 and (hosts_conf := new_options.get(CONF_HOSTS)):
-        turkov_api = await async_get_updated_api(hass, entry)
+    if entry.version < 4
+        if hosts_conf := new_options.get(CONF_HOSTS):
+            turkov_api = await async_get_updated_api(hass, entry)
 
-        for serial in tuple(hosts_conf):
-            for device in turkov_api.devices.values():
-                if device.serial_number == serial:
-                    _LOGGER.debug(
-                        f"Migrating host keying {serial} to {device.id}"
+            for serial in tuple(hosts_conf):
+                for device in turkov_api.devices.values():
+                    if device.serial_number == serial:
+                        _LOGGER.debug(
+                            f"Migrating host keying {serial} to {device.id}"
+                        )
+                        hosts_conf[device.id] = hosts_conf.pop(serial)
+                        break
+                if serial in hosts_conf:
+                    _LOGGER.warning(
+                        f"Configuration for device with serial number {serial} lost due to missing device"
                     )
-                    hosts_conf[device.id] = hosts_conf.pop(serial)
-                    break
-            if serial in hosts_conf:
-                _LOGGER.warning(
-                    f"Configuration for device with serial number {serial} lost due to missing device"
-                )
-                del hosts_conf[serial]
+                    del hosts_conf[serial]
         entry.version = 4
 
     # Apply on every migration
