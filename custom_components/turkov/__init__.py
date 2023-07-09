@@ -197,7 +197,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_migrate_entries(hass, entry.entry_id, _migrate_callback)
         entry.version = 3
 
-    if entry.version < 4
+    if entry.version < 4:
         if hosts_conf := new_options.get(CONF_HOSTS):
             turkov_api = await async_get_updated_api(hass, entry)
 
