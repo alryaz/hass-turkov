@@ -23,17 +23,16 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from . import (
+from .api import TurkovAPIAuthenticationError, TurkovDevice, TurkovAPIError
+from .const import DOMAIN
+from .helpers import (
     async_get_updated_api,
     HOST_OPTIONS_SCHEMA,
     HOST_DATA_SCHEMA,
     CLOUD_OPTIONS_SCHEMA,
-)
-from .api import TurkovAPIAuthenticationError, TurkovDevice, TurkovAPIError
-from .const import DOMAIN
-from .helpers import (
-    STEP_CLOUD_DATA_SCHEMA,
     STEP_CLOUD_HOST_OPTIONS_SCHEMA,
+    STEP_CLOUD_DATA_SCHEMA,
+    STEP_HOST_LOCAL_OPTIONS_SCHEMA,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 class TurkovConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Turkov."""
 
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         self._devices: Optional[dict[str, TurkovDevice]] = None
@@ -296,7 +295,7 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         menu_options = {}
-        hosts = self.options.setdefault(CONF_HOSTS, {})
+        hosts = self.options.get(CONF_HOSTS, {})
 
         if self._devices is None:
             turkov_api = await async_get_updated_api(
@@ -309,16 +308,14 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
             }
 
         for identifier in sorted({*hosts, *self._devices}):
-            local_ip = hosts.get(identifier, {}).get(CONF_HOST)
-            name = f"ID: {identifier[-8:]}"
             try:
                 device = self._devices[identifier]
             except KeyError:
-                pass
+                name = f"ID: {identifier[-8:]}"
             else:
                 name = device.name or device.type or name
-            if local_ip:
-                name += f" ({local_ip})"
+            if host := hosts.get(identifier, {}).get(CONF_HOST):
+                name += f" ({host})"
             menu_options[f"host_{identifier}"] = name
 
         if not menu_options:
@@ -330,11 +327,11 @@ class TurkovOptionsFlow(OptionsFlowWithConfigEntry):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         if is_local := (CONF_HOST in self.config_entry.data):
-            current_host = self.config_entry.data
-            schema = HOST_DATA_SCHEMA
+            current_host = self.config_entry.options
+            schema = STEP_HOST_LOCAL_OPTIONS_SCHEMA
         elif current_id := self._current_id:
             current_host = self.options.get(CONF_HOSTS, {}).get(current_id)
-            schema = HOST_OPTIONS_SCHEMA
+            schema = STEP_CLOUD_HOST_OPTIONS_SCHEMA
         else:
             return self.async_abort(reason="unknown_error")
 
