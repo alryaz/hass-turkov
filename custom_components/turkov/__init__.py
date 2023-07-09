@@ -216,6 +216,16 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     del hosts_conf[serial]
         entry.version = 4
 
+    if entry.version < 5:
+        if hosts_conf := new_data.pop(CONF_HOSTS, None):
+            for identifier in tuple(hosts_conf):
+                host_conf = hosts_conf.pop(identifier)
+                for key, value in host_conf.items():
+                    new_options.setdefault(CONF_HOSTS, {}).setdefault(
+                        identifier, {}
+                    ).setdefault(key, value)
+        entry.version = 5
+
     # Apply on every migration
     args["options"] = (
         CLOUD_OPTIONS_SCHEMA if CONF_EMAIL in new_data else HOST_OPTIONS_SCHEMA
