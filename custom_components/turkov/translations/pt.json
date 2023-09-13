@@ -1,0 +1,43 @@
+{
+  "config": {
+    "abort": {
+      "invalid_data": "Dados invalidos durante a execusão por favor volte ao inicio da configuração.",
+      "reauth_successful": "A autenticação foi restabelecida"
+    },
+    "error": {
+      "invalid_auth": "Nome de utilizador ou password errada",
+      "cannot_connect": "Não consigo ligar ao servidor",
+      "unknown": "Erro desconhcido",
+      "bad_host_format": "Formato do endereço invalido"
+    },
+    "step": {
+      "user": {
+        "description": "Selecione o tiipo de ligação.\n\nPara Nuvem (E-mail) Estão diponivei a duas configurações.",
+        "menu_options": {
+          "email": "\u2601\uFE0F Nuvem",
+          "host": "\uD83D\uDDA7 Local"
+        }
+      },
+      "email": {
+        "description": "Inserir o username  (E-mail address) e senha para o Turkov APP .\n\nPara registar ir a  add devices:\n- no Android: [Google Play](https://play.google.com/store/apps/details?id=com.llcturkov.turkov&hl=ru&pli=1), [APKPure](https://apkpure.com/turkov/com.llcturkov.turkov/download)\n- no iOS: [App Store](https://apps.apple.com/ru/app/turkov/id1464927777)",
+        "data": {
+          "email": "E-mail",
+          "password": "Senha",
+          "verify_ssl": "Verificar o certificado SSL"
+        }
+      },
+      "cloud_host": {
+        "description": "Inserir o nome do equipamento ou ip para ligar ao Turkov {device__type} {device__name} (S/N: `{device__serial}`) localmente.\n\nPara saltar esta etapa deixe o endereço vazio.",
+        "data": {
+          "host": "Endereço"
+        }
+      },
+      "host": {
+        "description": "Inserir o nome do equipamento ou ip para ligar ao Turkov localmente.",
+        "data": {
+          "host": "Endereço"
+        }
+      }
+    }
+  }
+}
