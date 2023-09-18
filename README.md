@@ -14,6 +14,9 @@
 > 💬 **Техническая поддержка**  
 > [![Группа в Telegram](https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Falryaz_ha_addons&style=for-the-badge)](https://telegram.dog/alryaz_ha_addons)
 
+> 📚 **Документация API Turkov**  
+> [![Документация API Turkov](https://img.shields.io/badge/Turkov-Wiki-111111.svg?style=for-the-badge)](https://wiki.turkov.ru/ru/equipment/wifi/pool)
+
 ## Установка
 ### Посредством HACS
 
