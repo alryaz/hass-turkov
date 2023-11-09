@@ -522,7 +522,7 @@ class TurkovAPI:
         self, device_id: str, key: str, value: Any
     ) -> None:
         _LOGGER.debug(
-            f"[{self}] Sending `{key}`=`{value}` to device {device_id}"
+            f"[{self}] Sending `{key}`=`{value}` (type: {type(value)}) to device {device_id}"
         )
 
         async with (
@@ -759,7 +759,7 @@ class TurkovDevice:
             raise RuntimeError("host not set")
 
         request_url = self.base_url + "/command"
-        _LOGGER.debug(f"[{self}] Executing command locally to: {request_url}")
+        _LOGGER.debug(f"[{self}] Sending `{key}`=`{value}` (type: {type(value)}) to endpoint {request_url}")
         async with self.session.post(
             self.base_url + "/command", json={key: value}
         ) as response:
