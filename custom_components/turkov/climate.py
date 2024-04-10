@@ -68,7 +68,6 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
 
     entity_description: TurkovClimateEntityDescription
 
-    _attr_supported_features = ClimateEntityFeature.FAN_MODE
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1.0
     _attr_min_temp = 5
