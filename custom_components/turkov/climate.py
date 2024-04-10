@@ -79,6 +79,12 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         device = self.coordinator.turkov_device
 
         supported_features = ClimateEntityFeature.FAN_MODE
+        for feature_name in ("TURN_ON", "TURN_OFF"):
+            # @todo: check against latest HA support
+            if hasattr(ClimateEntityFeature, feature_name):
+                supported_features |= getattr(
+                    ClimateEntityFeature, feature_name
+                )
         if getattr(self, "_attr_supported_features", None):
             supported_features |= self._attr_supported_features
         if device.target_temperature is not None:
