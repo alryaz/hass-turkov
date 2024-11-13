@@ -761,7 +761,7 @@ class TurkovDevice:
         request_url = self.base_url + "/command"
         _LOGGER.debug(f"[{self}] Sending `{key}`=`{value}` (type: {type(value)}) to endpoint {request_url}")
         async with self.session.post(
-            self.base_url + "/command", json={key: value}
+            self.base_url + "/command", data="{" + key + ": \"" + str(value) + "\"}"
         ) as response:
             data = await response.json(content_type=None)
             _LOGGER.debug(f"[{self}] Received local command result: {data}")
