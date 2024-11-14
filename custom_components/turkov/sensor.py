@@ -54,6 +54,13 @@ ENTITY_TYPES: tuple[TurkovSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
     ),
+    TurkovSensorEntityDescription(
+        key="exhaust_temperature",
+        name="Exhaust Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
 )
 
 

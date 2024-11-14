@@ -182,6 +182,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "air_quality",
                     "filter_life_percentage",
                     "outdoor_temperature",
+                    "exhaust_temperature",
                 ):
                     if ent.unique_id.endswith(postfix):
                         return {
