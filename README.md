@@ -1,3 +1,5 @@
+А управление через modbus [находится тут](https://github.com/malexmnt/turkov-modbus)
+
 # _Turkov_ для Home Assistant
 > Облачное и локальное управление вентиляционными устройствами фирмы Turkov.
 >
