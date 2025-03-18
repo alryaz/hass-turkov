@@ -269,8 +269,6 @@ class TurkovClimateEntity(TurkovEntity, ClimateEntity):
         # Device calls
         if not device.is_on:
             await device.turn_on()
-        if not device.is_heater_on:
-            await device.turn_on_heater()
         await device.set_target_temperature(kwargs[ATTR_TEMPERATURE])
 
         # Refresh call

@@ -76,6 +76,9 @@
       },
       "air_pressure": {
         "name": "Атмосферное давление"
+      },
+      "exhaust_temperature": {
+        "name": "Температура вытяжного воздуха"
       }
     },
     "switch": {

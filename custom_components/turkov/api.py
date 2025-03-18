@@ -580,6 +580,7 @@ class TurkovDevice:
         "indoor_temperature": ("in_temp", _float_less),
         "image_url": ("image", False),
         "indoor_humidity": ("in_humid", _float_less),
+        "exhaust_temperature": ("exh_temp", _float_less),
         "air_pressure": ("air_pres", float),
         "co2_level": ("CO2_level", float),
         "current_temperature": ("temp_curr", _float_less),
@@ -669,6 +670,7 @@ class TurkovDevice:
         self.setup: Optional[str] = None
         self.air_pressure: Optional[float] = None
         self.indoor_humidity: Optional[float] = None
+        self.exhaust_temperature: Optional[float] = None
         self.co2_level: Optional[float] = None
         self.current_temperature: Optional[float] = None
         self.current_humidity: Optional[float] = None
@@ -761,7 +763,7 @@ class TurkovDevice:
         request_url = self.base_url + "/command"
         _LOGGER.debug(f"[{self}] Sending `{key}`=`{value}` (type: {type(value)}) to endpoint {request_url}")
         async with self.session.post(
-            self.base_url + "/command", json={key: value}
+            self.base_url + "/command", data="{" + key + ": \"" + str(value) + "\"}"
         ) as response:
             data = await response.json(content_type=None)
             _LOGGER.debug(f"[{self}] Received local command result: {data}")
