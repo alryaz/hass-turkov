@@ -24,7 +24,7 @@ from aiohttp import ContentTypeError
 from aiohttp.hdrs import METH_GET, IF_NONE_MATCH, METH_POST, ETAG
 from aiohttp.typedefs import LooseHeaders
 from aiohttp.web_exceptions import HTTPForbidden, HTTPUnauthorized
-from homeassistant.util.dt import utcnow, utc_to_timestamp
+from homeassistant.util.dt import utcnow
 from multidict import CIMultiDict
 
 _LOGGER = logging.getLogger(__name__)
@@ -183,7 +183,7 @@ class TurkovAPI:
         access_token_expires_at = self._access_token_expires_at
         if access_token_expires_at is None:
             return True
-        return (access_token_expires_at - 60) < utc_to_timestamp(utcnow())
+        return (access_token_expires_at - 60) < utcnow().timestamp()
 
     @property
     def refresh_token(self) -> Optional[str]:
@@ -200,7 +200,7 @@ class TurkovAPI:
         refresh_token_expires_at = self._refresh_token_expires_at
         if refresh_token_expires_at is None:
             return True
-        return (refresh_token_expires_at - 60) < utc_to_timestamp(utcnow())
+        return (refresh_token_expires_at - 60) < utcnow().timestamp()
 
     @property
     def session(self) -> aiohttp.ClientSession:
@@ -271,7 +271,7 @@ class TurkovAPI:
         _LOGGER.debug(f"[{self}] Authentication response data: {data}")
 
         # Pin current timestamp
-        current_timestamp = utc_to_timestamp(utcnow())
+        current_timestamp = utcnow().timestamp()
 
         try:
             # Extract tokens and expiry information
